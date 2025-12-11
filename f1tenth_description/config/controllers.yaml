@@ -1,39 +1,23 @@
 controller_manager:
   ros__parameters:
-    update_rate: 100 # Hz
+    update_rate: 100  # Hz
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-    ackermann_steering_controller:
-      type: ackermann_steering_controller/AckermannSteeringController
-      command_interfaces:
-        - drive_cmd_velocity
-        - drive_cmd_steering
-
 ackermann_steering_controller:
   ros__parameters:
-    # --- Controller Configuration (CONFIRMED from XACRO) ---
     rear_wheel_names:
       - left_rear_wheel_joint
       - right_rear_wheel_joint
-
     steering_joint_names:
       - left_steering_hinge_joint
       - right_steering_hinge_joint
-      
-    # CONFIRMED: Distance between wheel centers
+    wheel_base: 0.325
     wheel_track: 0.2
-    # CONFIRMED: Distance between rear and front axles
-    wheel_base: 0.325 
-
-    # --- Wheel Radius (Assumed/To Be Confirmed) ---
-    # **You must verify this value in your macros.xacro file!**
-    wheel_radius: 0.05 
-
-    # --- Odometry/Topics ---
+    wheel_radius: 0.05
     open_loop: true
-    publish_rate: 50.0 # Hz
+    publish_rate: 50
     velocity_rolling_window_size: 10
-    cmd_ackermann_topic: /drive # This is where your drive_node publishes to
-    odom_topic: /odom      # This is where your drive_node subscribes from
+    cmd_ackermann_topic: /drive
+    odom_topic: /odom
