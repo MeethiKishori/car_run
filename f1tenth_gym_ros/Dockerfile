@@ -24,15 +24,25 @@ FROM ros:foxy
 
 SHELL ["/bin/bash", "-c"]
 
+
 # dependencies
 RUN apt-get update --fix-missing && \
     apt-get install -y git \
+                       libeigen3-dev \
+                       ros-foxy-rviz2 \
                        nano \
                        vim \
-                       python3-pip \
-                       libeigen3-dev \
                        tmux \
-                       ros-foxy-rviz2
+                       tree \
+                       python3-pip \
+                       # --- CRITICAL ADDITIONS START ---
+                       ros-foxy-gazebo-ros \
+                       ros-foxy-ros2-control \
+                       ros-foxy-ros2-controllers \
+                       ros-foxy-robot-state-publisher \
+                       ros-foxy-joint-state-publisher 
+                       # --- CRITICAL ADDITIONS END ---
+# ... rest of the file
 RUN apt-get -y dist-upgrade
 RUN pip3 install transforms3d
 
