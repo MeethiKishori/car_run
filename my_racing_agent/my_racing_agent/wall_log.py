@@ -19,13 +19,13 @@ class PIDWallFollower(Node):
         self.get_logger().info('PID Wall Follower Initialized')
 
         # Publishers and Subscribers
-        self.drive_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.scan_subscriber = self.create_subscription(
-            LaserScan, '/scan', self.scan_callback, 10
-        )
-        self.odom_subscriber = self.create_subscription(
-            Odometry, '/odom', self.odom_callback, 10
-        )
+        self.drive_publisher = self.create_publisher(Twist, '/cmd_vel', 10)  #original
+        self.scan_subscriber = self.create_subscription( LaserScan, '/scan', self.scan_callback, 10) #original
+        #self.odom_subscriber = self.create_subscription(Odometry, '/odom', self.odom_callback, 10) #original  
+
+        #self.drive_publisher = self.create_publisher(Twist, '/car_1/cmd_vel', 10)
+        #self.scan_subscriber = self.create_subscription(LaserScan, '/car_1/scan', self.scan_callback, 10)
+        self.odom_subscriber = self.create_subscription(Odometry, '/ego_racecar/odom', self.odom_callback, 10)
 
         # Controller selection
         #self.controller_mode = 'P'  # Active P
@@ -79,10 +79,10 @@ class PIDWallFollower(Node):
         self.csv_buffer = []
         self.buffer_size = 50  # Flush every 50 samples
 
-        if not os.path.isfile(self.csv_file_path):
-            with open(self.csv_file_path, mode='w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(self.csv_headers)
+        #if not os.path.isfile(self.csv_file_path): --- IGNORing will replace whole file in every run---
+        with open(self.csv_file_path, mode='w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(self.csv_headers)
 
     def odom_callback(self, msg: Odometry):
         """Update robot pose from odometry"""
