@@ -25,6 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'drive_node.py = my_racing_agent.drive_node:main',
+            'only_wall.py = my_racing_agent.only_wall:main',
+            'wall_log.py = my_racing_agent.wall_log:main',
         ],
     },
 )

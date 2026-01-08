@@ -83,6 +83,7 @@ def generate_launch_description():
         Node(
             package='my_racing_agent',
             executable='drive_node.py',
+            #executable='wall_log.py',   #for logging
             name='wall_follower_node',
             output='screen',
             emulate_tty=True,

@@ -40,7 +40,10 @@ RUN apt-get update --fix-missing && \
                        ros-foxy-ros2-control \
                        ros-foxy-ros2-controllers \
                        ros-foxy-robot-state-publisher \
-                       ros-foxy-joint-state-publisher
+                       ros-foxy-joint-state-publisher \
+                       ros-foxy-navigation2 \
+                       ros-foxy-nav2-bringup \
+                       ros-foxy-slam-toolbox
 
 RUN apt-get -y dist-upgrade
 RUN pip3 install transforms3d
