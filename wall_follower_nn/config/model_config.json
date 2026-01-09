@@ -1,0 +1,92 @@
+import json
+import os
+from pathlib import Path
+
+# Default model configuration
+DEFAULT_CONFIG = {
+    "model": {
+        "input_size": 4,
+        "hidden_sizes": [128, 64, 32],
+        "output_size": 2,
+        "dropout": 0.2
+    },
+    "training": {
+        "epochs": 150,
+        "batch_size": 64,
+        "learning_rate": 0.001,
+        "test_split": 0.2
+    },
+    "features": ["cte", "theta", "linear_speed", "angular_speed"],
+    "labels": ["speed_cmd", "angular_cmd"]
+}
+
+class ModelConfig:
+    """Manages model configuration"""
+    
+    def __init__(self, config_path=None):
+        if config_path is None:
+            config_path = "model_config.json"
+        
+        self.config_path = config_path
+        
+        if os.path.exists(config_path):
+            self.load()
+        else:
+            self.config = DEFAULT_CONFIG.copy()
+    
+    def load(self):
+        """Load configuration from file"""
+        with open(self.config_path, 'r') as f:
+            self.config = json.load(f)
+        print(f"✅ Config loaded from {self.config_path}")
+    
+    def save(self):
+        """Save configuration to file"""
+        with open(self.config_path, 'w') as f:
+            json.dump(self.config, f, indent=2)
+        print(f"✅ Config saved to {self.config_path}")
+    
+    def get_model_params(self):
+        """Get model architecture parameters"""
+        return self.config["model"]
+    
+    def get_training_params(self):
+        """Get training parameters"""
+        return self.config["training"]
+    
+    def get_feature_names(self):
+        """Get feature column names"""
+        return self.config["features"]
+    
+    def get_label_names(self):
+        """Get label column names"""
+        return self.config["labels"]
+    
+    def update(self, section, key, value):
+        """Update a configuration value"""
+        if section in self.config:
+            self.config[section][key] = value
+        else:
+            raise ValueError(f"Unknown section: {section}")
+    
+    def display(self):
+        """Print current configuration"""
+        print("\n" + "="*60)
+        print("📋 MODEL CONFIGURATION")
+        print("="*60)
+        print(json.dumps(self.config, indent=2))
+        print("="*60 + "\n")
+
+
+# Usage examples:
+
+def save_default_config():
+    """Save default configuration"""
+    config = ModelConfig()
+    config.save()
+    config.display()
+
+
+if __name__ == "__main__":
+    # Create and save default config
+    save_default_config()

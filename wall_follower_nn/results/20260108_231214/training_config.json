@@ -1,0 +1,26 @@
+{
+  "timestamp": "20260108_231214",
+  "epochs": 150,
+  "batch_size": 64,
+  "learning_rate": 0.001,
+  "hidden_sizes": [
+    128,
+    64,
+    32
+  ],
+  "test_split": 0.2,
+  "train_samples": 1255,
+  "test_samples": 314,
+  "best_test_loss": 0.0010391969233751297,
+  "feature_cols": [
+    "cte",
+    "theta",
+    "linear_speed",
+    "angular_speed"
+  ],
+  "label_cols": [
+    "speed_cmd",
+    "angular_cmd"
+  ],
+  "device": "mps"
+}
