@@ -733,3 +733,67 @@ If this list already contains old Nav2 nodes before launching, restart container
 3. In RViz, use **Publish Point** and click desired path points in order.
 4. Press Ctrl+C in waypoint terminal to save CSV.
 5. Output file will be in `my_robot/maps/mitrack_waypoints.csv`.
+
+## Latest Update (2026-04-16, Stage B: Reference Trajectory)
+
+### Objective
+
+1. Convert Stage A waypoint CSV into controller-ready reference trajectory.
+2. Keep outputs in map frame and store under `my_robot/maps/`.
+
+### Changes applied
+
+1. Added Stage B builder script:
+    - `my_robot/my_robot/trajectory_builder.py`
+    - Input: waypoint CSV (`id,x,y,z,yaw,v_hint`)
+    - Output: dense trajectory CSV with columns:
+       - `idx,s,x,y,yaw,kappa,v_ref`
+    - Core processing:
+       - removes duplicate consecutive waypoints
+       - piecewise-linear interpolation to fixed spacing
+       - computes yaw from local tangent
+       - computes curvature (`kappa`) via finite differences
+       - builds speed profile from `v_hint` (if present) or `v_max`
+       - applies lateral acceleration cap and forward/back acceleration smoothing
+
+2. Package wiring:
+    - `my_robot/setup.py`
+       - added console script:
+          - `trajectory_builder = my_robot.trajectory_builder:main`
+
+3. Dev workflow command:
+    - `dev.sh`
+       - added `trajectory_build`
+       - usage:
+          - `./dev.sh trajectory_build [waypoint_csv] [trajectory_csv]`
+       - behavior:
+          - defaults to latest `waypoints*.csv` if input omitted
+          - default output: `<waypoint_stem>_trajectory.csv`
+          - runs inside container using `ros2 run my_robot trajectory_builder`
+
+### Validation
+
+1. Syntax checks passed:
+    - `bash -n dev.sh`
+    - `python3 -m py_compile my_robot/my_robot/trajectory_builder.py`
+
+2. End-to-end run passed on real recorded file:
+    - command:
+       - `./dev.sh trajectory_build waypoints_20260416_232730.csv`
+    - generated:
+       - `my_robot/maps/waypoints_20260416_232730_trajectory.csv`
+    - output summary:
+       - `Trajectory points: 76`
+       - params:
+          - `spacing=0.100`
+          - `v_max=0.800`
+          - `a_lat_max=1.500`
+          - `a_long_max=1.000`
+
+### Stage B run steps (current)
+
+1. Record waypoints (Stage A):
+    - `./dev.sh waypoint_record`
+2. Build trajectory:
+    - `./dev.sh trajectory_build <waypoint_csv>`
+3. Use generated trajectory CSV in Stage C controller integration.

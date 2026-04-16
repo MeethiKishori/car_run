@@ -117,6 +117,17 @@ COMMANDS:
             ./dev.sh waypoint_record
             ./dev.sh waypoint_record mitrack_waypoints.csv
 
+───────────────────────────────────────────────────────────────────────────
+
+15. trajectory_build
+        Convert waypoint CSV to dense reference trajectory CSV
+        Usage: ./dev.sh trajectory_build [waypoint_csv] [trajectory_csv]
+
+        Examples:
+            ./dev.sh trajectory_build
+            ./dev.sh trajectory_build waypoints_20260416_232730.csv
+            ./dev.sh trajectory_build waypoints.csv mitrack_ref_traj.csv
+
 ═════════════════════════════════════════════════════════════════════════════
 EOF
     exit 0
@@ -651,6 +662,59 @@ ros2 run my_robot waypoint_recorder --ros-args -p output_file:='$output_file' -p
     print_success "Waypoint recording finished"
 }
 
+trajectory_build() {
+    print_header "Build Reference Trajectory"
+
+    require_container
+
+    waypoint_csv="$1"
+    trajectory_csv="$2"
+
+    if [ -z "$waypoint_csv" ]; then
+        waypoint_csv="$(ls -1t ./my_robot/maps/waypoints*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+
+    if [ -z "$waypoint_csv" ]; then
+        print_error "No waypoint CSV found in my_robot/maps"
+        print_info "Record waypoints first: ./dev.sh waypoint_record"
+        exit 1
+    fi
+
+    if [[ "$waypoint_csv" != *.csv ]]; then
+        waypoint_csv="${waypoint_csv}.csv"
+    fi
+
+    if [ -z "$trajectory_csv" ]; then
+        stem="${waypoint_csv%.csv}"
+        trajectory_csv="${stem}_trajectory.csv"
+    elif [[ "$trajectory_csv" != *.csv ]]; then
+        trajectory_csv="${trajectory_csv}.csv"
+    fi
+
+    waypoint_path="/sim_ws/src/my_robot/maps/${waypoint_csv}"
+    trajectory_path="/sim_ws/src/my_robot/maps/${trajectory_csv}"
+
+    print_info "Waypoint input:  ${waypoint_path}"
+    print_info "Trajectory out: ${trajectory_path}"
+    echo ""
+
+    docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+source install/setup.bash
+ros2 run my_robot trajectory_builder --input '$waypoint_path' --output '$trajectory_path' --spacing 0.10 --v-max 0.80 --a-lat-max 1.50 --a-long-max 1.00
+"
+
+    if ls ./my_robot/maps/${trajectory_csv} 1>/dev/null 2>&1; then
+        print_success "Trajectory CSV created: ./my_robot/maps/${trajectory_csv}"
+        print_info "Preview:"
+        head -n 8 ./my_robot/maps/${trajectory_csv}
+    else
+        print_error "Trajectory file not found on host path"
+        print_info "Check container path: ${trajectory_path}"
+        exit 1
+    fi
+}
+
 # ════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════
@@ -697,6 +761,9 @@ case "${1:-help}" in
         ;;
     waypoint_record)
         waypoint_record "$2"
+        ;;
+    trajectory_build)
+        trajectory_build "$2" "$3"
         ;;
     help|--help|-h|"")
         usage
