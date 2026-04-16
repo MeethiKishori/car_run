@@ -686,3 +686,50 @@ If this list already contains old Nav2 nodes before launching, restart container
 5. `./dev.sh headless`
 6. `./dev.sh perf`
 7. Send one goal at a time (no rapid repeated goal spam).
+
+## Latest Update (2026-04-16, Stage A: Waypoints)
+
+### Objective
+
+1. Start trajectory workflow by defining waypoints directly on map.
+2. Save waypoint clicks into reusable CSV for next-stage trajectory generation.
+
+### Changes applied
+
+1. Added new ROS2 node:
+    - `my_robot/my_robot/waypoint_recorder.py`
+    - Subscribes to `/clicked_point` (RViz Publish Point tool).
+    - Enforces map-frame waypoint capture (`frame_id = map`).
+    - Publishes visual feedback markers on `/waypoint_markers`.
+    - Saves CSV on Ctrl+C to `/sim_ws/src/my_robot/maps/*.csv`.
+    - CSV columns: `id,x,y,z,yaw,v_hint` (yaw/v_hint left blank for Stage B).
+
+2. Package wiring:
+    - `my_robot/setup.py`
+       - Added console script:
+          - `waypoint_recorder = my_robot.waypoint_recorder:main`
+    - `my_robot/package.xml`
+       - Added dependencies:
+          - `geometry_msgs`
+          - `visualization_msgs`
+
+3. Dev workflow command:
+    - `dev.sh`
+       - Added new command: `waypoint_record`
+       - Usage:
+          - `./dev.sh waypoint_record`
+          - `./dev.sh waypoint_record <csv_name>`
+       - Runs recorder inside container and saves to `my_robot/maps/`.
+
+### Validation
+
+1. `bash -n dev.sh` passed.
+2. `python3 -m py_compile my_robot/my_robot/waypoint_recorder.py` passed.
+
+### Stage A run steps
+
+1. Ensure sim stack and RViz are running.
+2. Run: `./dev.sh waypoint_record mitrack_waypoints.csv`
+3. In RViz, use **Publish Point** and click desired path points in order.
+4. Press Ctrl+C in waypoint terminal to save CSV.
+5. Output file will be in `my_robot/maps/mitrack_waypoints.csv`.

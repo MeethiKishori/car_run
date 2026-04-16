@@ -107,6 +107,16 @@ COMMANDS:
       ./dev.sh save_map                    (saves as mitrack_map_TIMESTAMP)
       ./dev.sh save_map levine_custom      (saves as levine_custom.yaml)
 
+───────────────────────────────────────────────────────────────────────────
+
+14. waypoint_record
+        Record RViz clicked waypoints (/clicked_point) and save CSV in my_robot/maps/
+        Usage: ./dev.sh waypoint_record [csv_name]
+    
+        Examples:
+            ./dev.sh waypoint_record
+            ./dev.sh waypoint_record mitrack_waypoints.csv
+
 ═════════════════════════════════════════════════════════════════════════════
 EOF
     exit 0
@@ -616,6 +626,31 @@ ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap '{name: {data:
     fi
 }
 
+waypoint_record() {
+    print_header "Record Waypoints From RViz"
+
+    require_container
+
+    csv_name="${1:-waypoints_$(date +%Y%m%d_%H%M%S).csv}"
+    if [[ "$csv_name" != *.csv ]]; then
+        csv_name="${csv_name}.csv"
+    fi
+    output_file="/sim_ws/src/my_robot/maps/${csv_name}"
+
+    print_info "Open RViz and click points using 'Publish Point' tool"
+    print_info "Press Ctrl+C in this terminal when done"
+    print_info "CSV output: $output_file"
+    echo ""
+
+    docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+source install/setup.bash
+ros2 run my_robot waypoint_recorder --ros-args -p output_file:='$output_file' -p frame_id:='map'
+"
+
+    print_success "Waypoint recording finished"
+}
+
 # ════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════
@@ -659,6 +694,9 @@ case "${1:-help}" in
         ;;
     save_map)
         save_map "$2"
+        ;;
+    waypoint_record)
+        waypoint_record "$2"
         ;;
     help|--help|-h|"")
         usage
