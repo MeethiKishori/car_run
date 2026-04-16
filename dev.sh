@@ -131,16 +131,37 @@ COMMANDS:
 ───────────────────────────────────────────────────────────────────────────
 
 16. trajectory_follow
-        Follow a generated reference trajectory CSV and publish /car_1/cmd_vel
-        Usage: ./dev.sh trajectory_follow [trajectory_csv]
+    Follow reference trajectory CSV using PID controller (default)
+    Usage: ./dev.sh trajectory_follow [trajectory_csv]
 
-        Examples:
-            ./dev.sh trajectory_follow
-            ./dev.sh trajectory_follow waypoints_20260416_232730_trajectory.csv
+    Examples:
+      ./dev.sh trajectory_follow
+      ./dev.sh trajectory_follow waypoints_20260416_232730_trajectory.csv
 
 ───────────────────────────────────────────────────────────────────────────
 
-17. maps
+17. trajectory_follow_pid
+    Follow reference trajectory CSV using PID controller (explicit)
+    Usage: ./dev.sh trajectory_follow_pid [trajectory_csv]
+
+    Examples:
+      ./dev.sh trajectory_follow_pid
+      ./dev.sh trajectory_follow_pid moretrack_trajectory.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+18. trajectory_follow_non_pid
+    Follow reference trajectory CSV using legacy non-PID controller
+    (geometric pure-pursuit style heading controller)
+    Usage: ./dev.sh trajectory_follow_non_pid [trajectory_csv]
+
+    Examples:
+      ./dev.sh trajectory_follow_non_pid
+      ./dev.sh trajectory_follow_non_pid moretrack_trajectory.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+19. maps
     List all available map files in my_robot/maps/
     Usage: ./dev.sh maps
 
@@ -217,6 +238,9 @@ pkill -f "/opt/ros/foxy/lib/rviz2/rviz2" || true
 pkill -f "trajectory_follower" || true
 pkill -f "ros2 run my_robot trajectory_follower" || true
 pkill -f "/sim_ws/install/my_robot/lib/my_robot/trajectory_follower" || true
+pkill -f "pid_trajectory_follower" || true
+pkill -f "ros2 run my_robot pid_trajectory_follower" || true
+pkill -f "/sim_ws/install/my_robot/lib/my_robot/pid_trajectory_follower" || true
 pkill -f "waypoint_recorder" || true
 pkill -f "ros2 run my_robot waypoint_recorder" || true
 pkill -f "trajectory_builder" || true
@@ -737,12 +761,15 @@ ros2 run my_robot trajectory_builder --input '$waypoint_path' --output '$traject
     fi
 }
 
-trajectory_follow() {
-    print_header "Follow Reference Trajectory"
+trajectory_follow_with_node() {
+    node_executable="$1"
+    controller_label="$2"
+    trajectory_csv="$3"
+
+    print_header "Follow Reference Trajectory (${controller_label})"
 
     require_container
 
-    trajectory_csv="$1"
     if [ -z "$trajectory_csv" ]; then
         trajectory_csv="$(ls -1t ./my_robot/maps/*trajectory*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
     fi
@@ -760,6 +787,7 @@ trajectory_follow() {
     trajectory_path="/sim_ws/src/my_robot/maps/${trajectory_csv}"
 
     print_info "Trajectory input: ${trajectory_path}"
+    print_info "Controller: ${controller_label}"
     print_info "Start this only when no Nav2 goal is active"
     print_info "Press Ctrl+C to stop follower"
     echo ""
@@ -767,10 +795,22 @@ trajectory_follow() {
     docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
 
 source install/setup.bash
-ros2 run my_robot trajectory_follower --ros-args -p trajectory_file:='$trajectory_path' -p global_frame:='map' -p robot_frame:='car_1_base_link' -p cmd_topic:='/car_1/cmd_vel'
+ros2 run my_robot ${node_executable} --ros-args -p trajectory_file:='$trajectory_path' -p global_frame:='map' -p robot_frame:='car_1_base_link' -p cmd_topic:='/car_1/cmd_vel'
 "
 
     print_success "Trajectory follower stopped"
+}
+
+trajectory_follow() {
+    trajectory_follow_with_node "pid_trajectory_follower" "PID (default)" "$1"
+}
+
+trajectory_follow_pid() {
+    trajectory_follow_with_node "pid_trajectory_follower" "PID" "$1"
+}
+
+trajectory_follow_non_pid() {
+    trajectory_follow_with_node "trajectory_follower" "Non-PID (Pure Pursuit style)" "$1"
 }
 
 maps() {
@@ -853,6 +893,12 @@ case "${1:-help}" in
         ;;
     trajectory_follow)
         trajectory_follow "$2"
+        ;;
+    trajectory_follow_pid)
+        trajectory_follow_pid "$2"
+        ;;
+    trajectory_follow_non_pid)
+        trajectory_follow_non_pid "$2"
         ;;
     maps)
         maps

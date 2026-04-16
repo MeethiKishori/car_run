@@ -1032,3 +1032,93 @@ If this list already contains old Nav2 nodes before launching, restart container
 ### Lesson learned
 
 Never compare `tf.header.stamp` to `rclpy.Clock().now()` in a simulation — the TF stamp is in sim time while the node clock may be wall time unless `use_sim_time:=true` is explicitly set. Always delegate staleness/timeout to tf2's own `timeout` parameter.
+
+---
+
+## Latest Update (2026-04-17, PID Controller as Separate Node)
+
+### Operator request
+
+1. Implement PID controller, but keep existing `trajectory_follower.py` untouched.
+2. Use PID controller as the default for future trajectory following.
+
+### Solution applied
+
+1. Restored `my_robot/my_robot/trajectory_follower.py` to non-PID controller logic.
+2. Added new dedicated node: `my_robot/my_robot/pid_trajectory_follower.py`.
+3. Registered new ROS2 entry point in `my_robot/setup.py`:
+   - `pid_trajectory_follower = my_robot.pid_trajectory_follower:main`
+4. Updated `dev.sh` `trajectory_follow` command to run PID node by default:
+   - `ros2 run my_robot pid_trajectory_follower ...`
+5. Updated `cleanup_runtime()` in `dev.sh` to kill stale PID follower processes.
+
+### PID controller design (new node)
+
+1. Control error:
+   - heading error + weighted cross-track error
+2. Angular control:
+   - PID on control error (`kp`, `ki`, `kd`) with integral clamp
+3. Speed policy:
+   - adaptive slowdown on large control error to improve cornering stability
+4. Startup robustness:
+   - same TF warm-up guard and tf2 lookup timeout strategy as current stable follower
+
+### New PID parameters
+
+1. `pid_kp` (default `1.6`)
+2. `pid_ki` (default `0.04`)
+3. `pid_kd` (default `0.18`)
+4. `cte_gain` (default `0.9`)
+5. `pid_integral_limit` (default `0.8`)
+6. `turn_slowdown_gain` (default `0.35`)
+7. `min_linear_speed` (default `0.08`)
+
+### Validation
+
+1. `python3 -m py_compile my_robot/my_robot/trajectory_follower.py my_robot/my_robot/pid_trajectory_follower.py` → OK
+2. `bash -n dev.sh` → OK
+
+### Operational note
+
+1. Future `./dev.sh trajectory_follow <trajectory.csv>` now uses PID controller node.
+2. Legacy non-PID node remains available as `trajectory_follower` for fallback/comparison.
+
+---
+
+## Latest Update (2026-04-17, dev.sh PID and Non-PID Split)
+
+### Operator request
+
+1. Expose both PID and non-PID trajectory follow modes in `dev.sh`.
+2. Clarify what non-PID controller is used.
+
+### Changes applied
+
+1. Added explicit commands in `dev.sh`:
+   - `trajectory_follow_pid`
+   - `trajectory_follow_non_pid`
+2. Kept `trajectory_follow` as default PID alias for backward compatibility.
+3. Refactored run logic through shared helper function `trajectory_follow_with_node()`.
+4. Updated help/usage text to show all 3 follow commands.
+
+### Controller mapping
+
+1. `trajectory_follow` -> `pid_trajectory_follower` (PID, default)
+2. `trajectory_follow_pid` -> `pid_trajectory_follower` (PID, explicit)
+3. `trajectory_follow_non_pid` -> `trajectory_follower` (non-PID)
+
+### Non-PID controller details
+
+1. The non-PID node (`trajectory_follower`) uses a geometric pure-pursuit style heading controller.
+2. Steering law:
+   - target heading error `alpha = heading_to_target - yaw`
+   - angular command from curvature-like term `omega = heading_gain * (2*v*sin(alpha)/lookahead)`
+3. It is not PID (no integral/derivative terms).
+
+### Validation
+
+1. `bash -n dev.sh` -> OK
+2. `./dev.sh --help` includes:
+   - `trajectory_follow`
+   - `trajectory_follow_pid`
+   - `trajectory_follow_non_pid`
