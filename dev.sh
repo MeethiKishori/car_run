@@ -128,6 +128,22 @@ COMMANDS:
             ./dev.sh trajectory_build waypoints_20260416_232730.csv
             ./dev.sh trajectory_build waypoints.csv mitrack_ref_traj.csv
 
+───────────────────────────────────────────────────────────────────────────
+
+16. trajectory_follow
+        Follow a generated reference trajectory CSV and publish /car_1/cmd_vel
+        Usage: ./dev.sh trajectory_follow [trajectory_csv]
+
+        Examples:
+            ./dev.sh trajectory_follow
+            ./dev.sh trajectory_follow waypoints_20260416_232730_trajectory.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+17. maps
+    List all available map files in my_robot/maps/
+    Usage: ./dev.sh maps
+
 ═════════════════════════════════════════════════════════════════════════════
 EOF
     exit 0
@@ -198,6 +214,12 @@ pkill -f "/opt/ros/foxy/lib/nav2_" || true
 pkill -f "/opt/ros/foxy/lib/slam_toolbox/async_slam_toolbox_node" || true
 pkill -f "/opt/ros/foxy/lib/gazebo_ros/spawn_entity.py" || true
 pkill -f "/opt/ros/foxy/lib/rviz2/rviz2" || true
+pkill -f "trajectory_follower" || true
+pkill -f "ros2 run my_robot trajectory_follower" || true
+pkill -f "/sim_ws/install/my_robot/lib/my_robot/trajectory_follower" || true
+pkill -f "waypoint_recorder" || true
+pkill -f "ros2 run my_robot waypoint_recorder" || true
+pkill -f "trajectory_builder" || true
 pkill -f "gzserver" || true
 rm -f /tmp/diag_launch.log
 sleep 1
@@ -715,6 +737,70 @@ ros2 run my_robot trajectory_builder --input '$waypoint_path' --output '$traject
     fi
 }
 
+trajectory_follow() {
+    print_header "Follow Reference Trajectory"
+
+    require_container
+
+    trajectory_csv="$1"
+    if [ -z "$trajectory_csv" ]; then
+        trajectory_csv="$(ls -1t ./my_robot/maps/*trajectory*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+
+    if [ -z "$trajectory_csv" ]; then
+        print_error "No trajectory CSV found in my_robot/maps"
+        print_info "Build one first: ./dev.sh trajectory_build"
+        exit 1
+    fi
+
+    if [[ "$trajectory_csv" != *.csv ]]; then
+        trajectory_csv="${trajectory_csv}.csv"
+    fi
+
+    trajectory_path="/sim_ws/src/my_robot/maps/${trajectory_csv}"
+
+    print_info "Trajectory input: ${trajectory_path}"
+    print_info "Start this only when no Nav2 goal is active"
+    print_info "Press Ctrl+C to stop follower"
+    echo ""
+
+    docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+source install/setup.bash
+ros2 run my_robot trajectory_follower --ros-args -p trajectory_file:='$trajectory_path' -p global_frame:='map' -p robot_frame:='car_1_base_link' -p cmd_topic:='/car_1/cmd_vel'
+"
+
+    print_success "Trajectory follower stopped"
+}
+
+maps() {
+    print_header "Available Map Files"
+    
+    maps_dir="./my_robot/maps"
+    
+    if [ ! -d "$maps_dir" ]; then
+        print_error "Maps directory not found: $maps_dir"
+        exit 1
+    fi
+    
+    print_info "Map files (.yaml):"
+    echo ""
+    ls -lhS "$maps_dir"/*.yaml 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}' || {
+        print_error "No map files found"
+    }
+    
+    echo ""
+    print_info "Recommended tracks:"
+    echo "  • moretrack.yaml     - Larger track (recommended for trajectory tracking)"
+    echo "  • trackhalf.yaml     - Half track variant"
+    echo "  • mitrack_map_*.yaml - Saved mitrack maps from previous sessions"
+    echo ""
+    print_info "Quick start with better track:"
+    echo "  ./dev.sh waypoint_record moretrack_waypoints.csv"
+    echo "  ./dev.sh trajectory_build moretrack_waypoints.csv moretrack_trajectory.csv"
+    echo "  ./dev.sh trajectory_follow moretrack_trajectory.csv"
+}
+
 # ════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════
@@ -764,6 +850,12 @@ case "${1:-help}" in
         ;;
     trajectory_build)
         trajectory_build "$2" "$3"
+        ;;
+    trajectory_follow)
+        trajectory_follow "$2"
+        ;;
+    maps)
+        maps
         ;;
     help|--help|-h|"")
         usage

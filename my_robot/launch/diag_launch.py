@@ -33,8 +33,12 @@ def generate_launch_description():
 
     # ── args ──────────────────────────────────────────────────────────────────
     world_arg       = DeclareLaunchArgument('world', default_value='mitrack')
+    map_arg         = DeclareLaunchArgument('map', default_value='moretrack', 
+                        description='Map: mitrack, moretrack, trackhalf')
     world_name      = LaunchConfiguration('world')
+    map_name        = LaunchConfiguration('map')
     world_path_base = os.path.join(pkg_robot, 'worlds')
+    maps_path_base  = os.path.join(pkg_robot, 'maps')
 
     nav2_params_file = os.path.join(pkg_robot, 'config', 'nav2', 'nav2_params.yaml')
     slam_params_file = os.path.join(pkg_robot, 'config', 'slam', 'slam_toolbox_params.yaml')

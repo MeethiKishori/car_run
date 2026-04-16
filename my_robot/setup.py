@@ -43,6 +43,7 @@ setup(
         'console_scripts': [
             'waypoint_recorder = my_robot.waypoint_recorder:main',
             'trajectory_builder = my_robot.trajectory_builder:main',
+            'trajectory_follower = my_robot.trajectory_follower:main',
         ],
     },
 )

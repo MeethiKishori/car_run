@@ -797,3 +797,238 @@ If this list already contains old Nav2 nodes before launching, restart container
 2. Build trajectory:
     - `./dev.sh trajectory_build <waypoint_csv>`
 3. Use generated trajectory CSV in Stage C controller integration.
+
+## Latest Update (2026-04-16, Stage C: Trajectory Follower)
+
+### Objective
+
+1. Follow Stage B reference trajectory directly from CSV.
+2. Publish control commands for car motion without Nav2 goal dispatch.
+
+### Changes applied
+
+1. Added Stage C follower node:
+   - `my_robot/my_robot/trajectory_follower.py`
+   - Reads trajectory CSV with fields: `x,y,yaw,v_ref`
+   - Uses TF lookup (`map -> car_1_base_link`) for current pose
+   - Implements pure-pursuit style control with lookahead target
+   - Publishes:
+     - `/car_1/cmd_vel` (Twist)
+     - `/reference_trajectory` (Path visualization)
+     - `/reference_target_marker` (current target marker)
+   - Stops robot at goal tolerance and on shutdown.
+
+2. Package wiring:
+   - `my_robot/setup.py`
+     - added console script:
+       - `trajectory_follower = my_robot.trajectory_follower:main`
+   - `my_robot/package.xml`
+     - added dependencies:
+       - `nav_msgs`
+       - `tf2_ros`
+
+3. Dev workflow command:
+   - `dev.sh`
+     - added `trajectory_follow`
+     - usage:
+       - `./dev.sh trajectory_follow [trajectory_csv]`
+     - defaults to latest `*trajectory*.csv` in `my_robot/maps/`.
+
+### Validation
+
+1. Syntax checks passed:
+   - `bash -n dev.sh`
+   - `python3 -m py_compile my_robot/my_robot/trajectory_follower.py`
+2. Build completed with updated package entrypoints.
+3. Command startup check passed:
+   - `./dev.sh trajectory_follow waypoints_20260416_232730_trajectory.csv`
+   - follower node loaded trajectory and started control loop.
+
+### Runtime note
+
+1. During one smoke run, TF reported:
+   - `target_frame map does not exist`
+2. This indicates follower was started while required map-frame transform was not available in that moment.
+3. Operational requirement for Stage C:
+   - start follower only after full sim/SLAM stack is up and `map -> car_1_base_link` exists.
+   - do not run active Nav2 goal and trajectory follower at the same time.
+
+### Stage C run steps (current)
+
+1. `./dev.sh launch`
+2. Wait 20-30 seconds.
+3. Optional: `./dev.sh headless`
+4. Ensure trajectory exists:
+   - `./dev.sh trajectory_build <waypoint_csv>`
+5. Start tracking:
+   - `./dev.sh trajectory_follow <trajectory_csv>`
+6. Stop with Ctrl+C.
+
+## Latest Update (2026-04-17, Auto-Move on Launch)
+
+### Operator symptom
+
+1. Car started moving right after `./dev.sh launch` without sending a new Nav2 goal.
+
+### Root cause
+
+1. `trajectory_follower` from Stage C remained active and kept publishing `/car_1/cmd_vel`.
+2. Because it is independent of Nav2 goals, launch appeared to auto-drive even with no new goal.
+
+### Evidence
+
+1. `ros2 topic info /car_1/cmd_vel -v` showed `Node name: trajectory_follower` as publisher.
+2. Process inspection showed follower binaries/runner under `ros2 run my_robot trajectory_follower`.
+
+### Fix applied
+
+1. Hardened cleanup in `dev.sh` `cleanup_runtime()` to kill Stage C/Stage A helper processes as well:
+   - `trajectory_follower`
+   - `ros2 run my_robot trajectory_follower`
+   - `/sim_ws/install/my_robot/lib/my_robot/trajectory_follower`
+   - `waypoint_recorder`
+   - `ros2 run my_robot waypoint_recorder`
+   - existing `trajectory_builder` cleanup kept.
+2. This ensures `./dev.sh stop` and `./dev.sh launch` clear stale helper nodes before startup.
+
+### Operational rule
+
+1. Run either Nav2 goal flow or `trajectory_follow`, not both simultaneously.
+2. Before a fresh launch, run `./dev.sh stop` once if unsure.
+
+---
+
+## Latest Update (2026-04-17, Map Mismatch + Trajectory Sync Issues)
+
+### Operator symptom
+
+1. Car followed trajectory but kept hitting walls even though the node started correctly.
+2. Problem was reproducible on repeated `./dev.sh trajectory_follow moretrack_trajectory.csv` without re-recording waypoints.
+
+### Root causes identified
+
+#### 1. Wrong map used for trajectory recording (primary cause)
+
+1. Existing trajectory `waypoints_20260416_232730_trajectory.csv` was recorded on the smaller `mitrack` track.
+2. When running on `moretrack` (larger track), the coordinate systems are different — the car aimed for waypoints that fell outside the actual drivable area.
+
+**Fix**: Documented correct workflow: record new waypoints on the active track before building trajectory.
+
+#### 2. No TF staleness check (secondary cause — hitting walls under CPU load)
+
+1. Old `_lookup_robot_pose()` used `lookup_transform(..., rclpy.time.Time())` which always returns the latest cached transform.
+2. Under high CPU load (800%+ common in Gazebo + Nav2 stack), the TF cache can be 500ms–1s stale.
+3. Car used an old pose → computed wrong target → steered into wall.
+
+**Fix**: Added staleness check in `_lookup_robot_pose()`:
+- Compare TF stamp against current ROS clock.
+- If age > `tf_max_age_sec` (default 0.5s), reject transform and stop the car.
+- Stale count tracked; warm-up gate reset on each stale/failed read.
+
+#### 3. Startup cold-start position mismatch
+
+1. `current_target_idx` always started at 0 (first trajectory point).
+2. After SLAM builds the map there may be a small offset versus the trajectory recording session.
+3. Car would aim for the wrong initial waypoint.
+
+**Fix**: On first call (`current_target_idx == 0`), `_find_target_index()` searches the **entire** trajectory to pick the globally nearest point as the start.
+
+#### 4. TF warm-up sync guard missing
+
+1. Old code sent drive commands on the very first control tick, before SLAM converged the map frame.
+2. Resulted in initial jerk/wrong direction burst before SLAM settled.
+
+**Fix**: Added `tf_warmup_count=5` consecutive fresh-TF reads required before any `cmd_vel` is published. Car holds still during warm-up. Gate resets whenever TF is stale or unavailable.
+
+#### 5. Narrow search window (minor)
+
+1. `_find_target_index` searched only 300 points ahead.
+2. If car slipped ahead (stale TF jump), it could not recover backward.
+
+**Fix**: Window increased to 400 points (= 40m at 0.10m spacing).
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `my_robot/my_robot/trajectory_follower.py` | TF staleness check, warm-up gate, global cold-start search, wider search window |
+| `my_robot/launch/diag_launch.py` | Added `map` launch argument (default `moretrack`) for future map switching |
+| `dev.sh` | Added `maps` command (lists available track maps with recommendations) |
+
+### New parameters in trajectory_follower
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `tf_max_age_sec` | `0.5` | Max allowed TF age in seconds before treating as stale |
+| `tf_warmup_count` | `5` | Consecutive fresh TF reads required before control starts |
+
+### Validation
+
+1. `python3 -m py_compile my_robot/my_robot/trajectory_follower.py` → OK
+2. `bash -n dev.sh` → OK
+
+### Correct workflow for trajectory tracking on a new track
+
+```bash
+# 1. Launch simulation
+./dev.sh launch
+
+# 2. Wait ~20s for RViz to open
+
+# 3. Record new waypoints on the active track
+./dev.sh waypoint_record moretrack_waypoints.csv
+
+# 4. Build trajectory from those waypoints
+./dev.sh trajectory_build moretrack_waypoints.csv moretrack_trajectory.csv
+
+# 5. Follow the new trajectory (always use trajectory matched to current track)
+./dev.sh trajectory_follow moretrack_trajectory.csv
+```
+
+### Operational rules (updated)
+
+1. Always record waypoints on the **same track** that the simulation is running.
+2. Never reuse a trajectory file recorded on a different track.
+3. `./dev.sh maps` shows all available maps and recommended tracks.
+4. `trajectory_follow` now waits for TF to stabilize before moving (warm-up gate).
+5. If car jerks at startup → increase `tf_warmup_count` parameter.
+6. If car veers under high CPU → decrease `tf_max_age_sec` to 0.3 for stricter staleness rejection.
+
+---
+
+## Latest Update (2026-04-17, Sim/Wall Clock Mismatch — Car Never Moved)
+
+### Operator symptom
+
+1. After the TF staleness fix, car never moved at all.
+2. Log showed continuous stale TF warnings with absurd age values:
+   ```
+   [WARN] Stale TF: age=1776380672.07s > limit=0.5s (stale count=586). Holding last command.
+   ```
+
+### Root cause
+
+1. The manual staleness check compared `tf.header.stamp` (in **Gazebo sim time**, a large epoch-based value ~1.77 billion seconds) against `self.get_clock().now()` (returning **wall clock time**, also large but different offset).
+2. The subtraction always produced a huge positive number, so **every** transform was flagged as stale immediately.
+3. Consequence: car was permanently held, warm-up gate never cleared.
+
+### Fix applied
+
+1. Removed the manual clock-based age calculation entirely from `_lookup_robot_pose()`.
+2. Now uses `tf_buffer.lookup_transform(..., timeout=rclpy.duration.Duration(seconds=0.1))` — tf2 itself blocks briefly and raises `TransformException` if no valid transform is available.
+3. This is correct regardless of sim vs wall time since tf2 handles the clock internally.
+4. Removed now-unused `tf_max_age_sec` parameter and `time` / `builtin_interfaces` imports.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `my_robot/my_robot/trajectory_follower.py` | Removed manual age check; use tf2 `timeout=` arg; removed unused imports and `tf_max_age_sec` param |
+
+### Validation
+
+1. `python3 -m py_compile my_robot/my_robot/trajectory_follower.py` → OK
+
+### Lesson learned
+
+Never compare `tf.header.stamp` to `rclpy.Clock().now()` in a simulation — the TF stamp is in sim time while the node clock may be wall time unless `use_sim_time:=true` is explicitly set. Always delegate staleness/timeout to tf2's own `timeout` parameter.
