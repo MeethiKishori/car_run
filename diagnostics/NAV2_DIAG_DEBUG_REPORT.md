@@ -318,6 +318,167 @@ The startup flow had multiple failures across build and runtime:
    Reason: bt_navigator failed during configure, which blocked full Nav2 activation.
 
 5. Runtime was unstable due to overlapping launch sessions:
+
+## Latest Operator Update (2026-04-16, Evening)
+
+### What was added/changed
+
+1. Map saving now works directly to project maps folder:
+   - `./dev.sh save_map <name>`
+   - saved files: `my_robot/maps/<name>.pgm` and `my_robot/maps/<name>.yaml`
+2. Added manual headless mode command:
+   - `./dev.sh headless`
+   - this closes only `gzclient` and keeps `gzserver` running
+3. Kept GUI control manual by request:
+   - `cleanup_runtime()` no longer kills `gzclient` automatically
+   - user decides when to close GUI
+4. `cancel_goal` behavior validated:
+   - `return_code=0` with `goals_canceling=[]` means cancel succeeded but no active goal existed at call time
+
+### Why users still see aborts without sending any goal
+
+Observed lifecycle state sometimes becomes partial at startup:
+
+1. `/controller_server -> unavailable` or `inactive`
+2. `/planner_server -> unconfigured`
+3. `/recoveries_server -> unconfigured`
+4. `/bt_navigator -> active` or `unconfigured` depending on timing
+
+This can happen before any goal click when CPU is overloaded and lifecycle transitions do not complete cleanly.
+
+### Evidence pattern (latest)
+
+1. CPU often > 700% in container snapshots
+2. Top load from `gzserver`, `gzclient`, `rviz2`
+3. Goal attempt then fails with:
+   - `Send goal call failed`
+   - `Action server failed while executing action callback: "send_goal failed"`
+   - `[navigate_to_pose] ... Aborting handle`
+
+### Recommended operation (first goal and next goal)
+
+Use this sequence every run.
+
+1. Launch stack:
+   - `./dev.sh launch`
+2. Optional lower-load mode:
+   - `./dev.sh headless`
+3. Wait 20-30 seconds.
+4. Run readiness check:
+   - `./dev.sh perf`
+5. Send first goal only if all lifecycle nodes are `active [3]`:
+   - `/controller_server`
+   - `/planner_server`
+   - `/recoveries_server`
+   - `/bt_navigator`
+   - `/waypoint_follower`
+
+For next goals:
+
+1. Send only one new goal at a time.
+2. Wait for result state before sending next goal.
+3. If navigation looks stuck:
+   - run `./dev.sh cancel_goal`
+   - wait 2-3s
+   - send one fresh goal
+4. If repeated failure (2-3 times) or any lifecycle node is not active:
+   - `./dev.sh stop`
+   - `docker restart f1tenth_gym_ros-sim-1`
+   - `./dev.sh launch`
+
+### Practical interpretation notes
+
+1. `goals_canceling=[]` after cancel call is valid when goal already ended or no active goal exists.
+2. `Message Filter dropping message ... reason 'Unknown'` is often timing/TF pressure under load and is not by itself proof of Nav2 hard failure.
+3. Partial lifecycle state is a startup/runtime stability issue, not a user goal-click mistake.
+
+### Commands summary (current)
+
+1. Bringup: `./dev.sh launch`
+2. Health check: `./dev.sh health`
+3. Perf + lifecycle + recommendation: `./dev.sh perf`
+4. Cancel active nav goals: `./dev.sh cancel_goal`
+5. Headless mode (manual): `./dev.sh headless`
+6. Save map: `./dev.sh save_map <map_name>`
+7. Capture diagnostics snapshot: `./dev.sh capture`
+
+## Latest Update (2026-04-16, Late Evening)
+
+### What changed
+
+1. Added `goal_status` command to `dev.sh`.
+2. This command runs inside the container and prints:
+   - `ros2 action info /navigate_to_pose`
+   - lifecycle state of core Nav2 nodes
+
+### Why it was needed
+
+1. Running `ros2 action info /navigate_to_pose` directly on host returned `127` (`ros2` not found) because ROS is inside container runtime.
+2. Users needed a one-command check to know if previous goal ended and whether it is safe to send next goal.
+
+### How to use
+
+1. `./dev.sh goal_status`
+2. Send next goal only when:
+   - action server `/bt_navigator` is present
+   - all lifecycle nodes are `active [3]`
+
+### Updated quick decision rule
+
+1. If `goal_status` shows partial lifecycle (`inactive`, `unconfigured`, `unavailable`): do not send goal.
+2. If repeated issues continue:
+   - `./dev.sh stop`
+   - `docker restart f1tenth_gym_ros-sim-1`
+   - `./dev.sh launch`
+
+## Latest Update (2026-04-16, Night: Red-Path-No-Motion Case)
+
+### New finding
+
+1. In some runs, RViz shows a valid global path (red line) and `bt_navigator` starts navigation, but the car does not move.
+2. This occasionally ends with `Failed to make progress` and action abort.
+
+### Log evidence pattern
+
+1. `Begin navigating from current location ...`
+2. intermittent `Message Filter dropping message ... reason 'Unknown'`
+3. `Control loop missed its desired rate ...`
+4. then `Failed to make progress` -> `Navigation failed`
+
+### Root cause interpretation
+
+1. Planner is producing a path, but controller/progress checks are too strict for current timing/load jitter.
+2. Under high CPU and TF timing pressure, the progress checker can abort before enough movement is observed.
+
+### Solution applied
+
+1. Tuned `progress_checker` in `my_robot/config/nav2/nav2_params.yaml`:
+   - `required_movement_radius: 0.5 -> 0.2`
+   - `movement_time_allowance: 10.0 -> 20.0`
+2. Relaxed goal checker tolerances:
+   - `xy_goal_tolerance: 0.25 -> 0.30`
+   - `yaw_goal_tolerance: 0.25 -> 0.30`
+3. Reduced RPP aggressiveness and increased TF tolerance:
+   - `desired_linear_vel: 0.35 -> 0.28`
+   - `lookahead_dist: 0.6 -> 0.5`
+   - `min_lookahead_dist: 0.3 -> 0.25`
+   - `transform_tolerance: 0.5 -> 0.8`
+4. Added costmap transform tolerance for timing robustness:
+   - local costmap `transform_tolerance: 0.8`
+   - global costmap `transform_tolerance: 0.8`
+
+### How to operate after this change
+
+1. Relaunch to load new params:
+   - `./dev.sh launch`
+2. Optional lower load:
+   - `./dev.sh headless`
+3. Before first goal, verify:
+   - `./dev.sh goal_status`
+   - all core nodes `active [3]`
+4. If red path appears but car pauses:
+   - wait a few seconds once
+   - if still stuck: `./dev.sh cancel_goal`, then send one fresh nearby goal
    - Duplicate Nav2 and SLAM nodes in graph
    - Invalid sequence number errors in lifecycle manager
    Reason: Multiple launch processes remained alive at the same time.
