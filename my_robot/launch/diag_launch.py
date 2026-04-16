@@ -7,7 +7,8 @@ from launch.actions import (DeclareLaunchArgument, SetEnvironmentVariable,
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, TextSubstitution
 from launch_ros.actions import Node
-
+from launch_ros.substitutions import FindPackageShare
+from launch.substitutions import PathJoinSubstitution
 
 def generate_launch_description():
 
@@ -38,7 +39,7 @@ def generate_launch_description():
     nav2_params_file = os.path.join(pkg_robot, 'config', 'nav2', 'nav2_params.yaml')
     slam_params_file = os.path.join(pkg_robot, 'config', 'slam', 'slam_toolbox_params.yaml')
 
-    sim = {'use_sim_time': True}
+    sim = {'use_sim_time': True} 
 
     # ── robot description ─────────────────────────────────────────────────────
     xacro_path = os.path.join(pkg_robot, 'urdf', 'xacros', 'race.xacro')
@@ -55,6 +56,12 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_desc, **sim}],
         output='screen'
     )
+
+    bt_xml = PathJoinSubstitution([
+        FindPackageShare('nav2_bt_navigator'),
+        'behavior_trees',
+        'navigate_w_replanning_and_recovery.xml',
+    ])
 
     # ── 2. Gazebo ─────────────────────────────────────────────────────────────
     gazebo = IncludeLaunchDescription(
@@ -80,8 +87,6 @@ def generate_launch_description():
     ])
 
     # ── 4. SLAM toolbox ───────────────────────────────────────────────────────
-    # scan_topic: /car_1/scan is set inside slam_toolbox_params.yaml
-    # so NO remap needed here — slam reads directly from /car_1/scan
     slam = TimerAction(period=7.0, actions=[
         Node(
             package='slam_toolbox',
@@ -92,18 +97,7 @@ def generate_launch_description():
         )
     ])
 
-    # ── 5. Nav2 nodes (individually, with correct remaps) ─────────────────────
-    #
-    # controller_server:
-    #   subscribes /odom        → remap to /car_1/odom
-    #   publishes  /cmd_vel     → remap to /car_1/cmd_vel
-    #
-    # costmap (local + global):
-    #   scan topic set to /car_1/scan directly in nav2_params.yaml
-    #
-    # recoveries_server:
-    #   publishes  /cmd_vel     → remap to /car_1/cmd_vel
-
+    # ── 5. Nav2 nodes ─────────────────────────────────────────────────────────
     controller = TimerAction(period=12.0, actions=[
         Node(
             package='nav2_controller',
@@ -147,7 +141,7 @@ def generate_launch_description():
             executable='bt_navigator',
             name='bt_navigator',
             output='screen',
-            parameters=[nav2_params_file, sim],
+            parameters=[nav2_params_file, sim, {'default_bt_xml_filename': bt_xml}],
             remappings=[
                 ('/odom', '/car_1/odom'),
             ]
@@ -164,7 +158,6 @@ def generate_launch_description():
         )
     ])
 
-    # Lifecycle manager — starts AFTER all nav2 nodes are up
     lifecycle_manager = TimerAction(period=14.0, actions=[
         Node(
             package='nav2_lifecycle_manager',

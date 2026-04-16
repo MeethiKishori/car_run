@@ -89,7 +89,8 @@
       <longitude_deg>0</longitude_deg>
       <elevation>0</elevation>
       <heading_deg>0</heading_deg>
-    </spherical_coordinates>
+    </spherical_coordinates> 
+    <!--
     <model name='Untitled'>
       <pose>1.736 0.287781 0 0 -0 0</pose>
       <link name='Wall_0'>
@@ -948,7 +949,8 @@
         <kinematic>0</kinematic>
       </link>
       <static>1</static>
-    </model>
+    </model> 
+   
     <state world_name='default'>
       <sim_time>81 315000000</sim_time>
       <real_time>81 690826674</real_time>
@@ -1072,6 +1074,7 @@
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
+      -->
       <model name='ground_plane'>
         <pose>0 0 0 0 -0 0</pose>
         <scale>1 1 1</scale>
@@ -1085,7 +1088,7 @@
       <light name='sun'>
         <pose>0 0 10 0 -0 0</pose>
       </light>
-    </state>
+    </state> 
     <gui fullscreen='0'>
       <camera name='user_camera'>
         <pose>14.3846 -6.41488 22.6686 0 1.06279 2.40681</pose>

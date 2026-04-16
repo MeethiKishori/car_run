@@ -66,6 +66,14 @@ class PIDWallFollower(Node):
         # Integral anti-windup limits
         self.integral_max = 1.0
         self.integral_min = -1.0
+         
+        # Pose
+        self.x = 1.6
+        self.y = -7.0
+        self.z = 1.0
+        self.theta = 0.0
+        self.linear_speed = 0.0
+        self.angular_speed = 0.0
 
         # ============================================================
         # LIDAR INDICES (calculated dynamically)

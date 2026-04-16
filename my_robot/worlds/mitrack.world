@@ -92,7 +92,7 @@
         <collision name='collision'>
           <geometry>
             <mesh>
-              <uri>model://racecar_description/meshes/walker_racecourse.dae</uri>
+              <uri>model://walker_racecourse/meshes/walker_racecourse.dae</uri>
             </mesh>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -112,7 +112,7 @@
         <visual name='visual'>
           <geometry>
             <mesh>
-              <uri>model://racecar_description/meshes/walker_racecourse.dae</uri>
+              <uri>model://walker_racecourse/meshes/walker_racecourse.dae</uri>
             </mesh>
           </geometry>
         </visual>
@@ -123,12 +123,13 @@
       <static>1</static>
       <pose>4.83323 -1.36422 0 0 -0 0</pose>
     </model>
+    <!--
     <model name='parking_1'>
       <link name='link'>
         <collision name='collision'>
           <geometry>
             <mesh>
-              <uri>model://racecar_description/meshes/parking_1.dae</uri>
+              <uri>model://parking_1/meshes/parking_1.dae</uri>
             </mesh>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -148,7 +149,7 @@
         <visual name='visual'>
           <geometry>
             <mesh>
-              <uri>model://racecar_description/meshes/parking_1.dae</uri>
+              <uri>model://parking_1/meshes/parking_1.dae</uri>
             </mesh>
           </geometry>
         </visual>
@@ -159,12 +160,14 @@
       <static>1</static>
       <pose>0 0 0 0 -0 0</pose>
     </model>
+    -->
+    <!--
     <model name='Cone'>
       <link name='link'>
         <collision name='collision'>
           <geometry>
             <mesh>
-              <uri>model://racecar_description/meshes/cone.dae</uri>
+              <uri>model://cone/meshes/cone.dae</uri>
             </mesh>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -184,7 +187,7 @@
         <visual name='visual'>
           <geometry>
             <mesh>
-              <uri>model://racecar_description/meshes/cone.dae</uri>
+              <uri>model://cone/meshes/cone.dae</uri>
             </mesh>
           </geometry>
           <material>
@@ -212,6 +215,8 @@
       </link>
       <pose>-14.1398 -22.1635 0 0 -0 0</pose>
     </model>
+    -->
+    <!--
     <model name='MIT_Tunnel'>
       <pose>6.4551 8.62904 0 0 -0 0</pose>
       <link name='Wall_10'>
@@ -1686,11 +1691,13 @@
       </link>
       <static>1</static>
     </model>
+    -->
     <state world_name='default'>
       <sim_time>94 155000000</sim_time>
       <real_time>280 976627074</real_time>
       <wall_time>1765723467 80163587</wall_time>
       <iterations>94155</iterations>
+      <!--
       <model name='Cone'>
         <pose>-14.1398 -22.1635 -6599.58 0 -0 0</pose>
         <scale>1 1 1</scale>
@@ -1701,6 +1708,7 @@
           <wrench>0 0 -9.8 0 -0 0</wrench>
         </link>
       </model>
+      -->
       <model name='MIT_Tunnel'>
         <pose>3.86662 -6.04213 0 0 -0 0</pose>
         <scale>1 1 1</scale>
@@ -1915,6 +1923,7 @@
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
+      -->
       <model name='ground_plane'>
         <pose>0 0 0 0 -0 0</pose>
         <scale>1 1 1</scale>
@@ -1925,6 +1934,7 @@
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
+      <!--
       <model name='parking_1'>
         <pose>0 0 0 0 -0 0</pose>
         <scale>1 1 1</scale>
@@ -1935,6 +1945,7 @@
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
+      -->
       <model name='walker_racecourse'>
         <pose>4.83323 -1.36422 0 0 -0 0</pose>
         <scale>1 1 1</scale>

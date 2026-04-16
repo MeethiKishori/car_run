@@ -4,16 +4,27 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, TimerAction, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
+from launch.substitutions import LaunchConfiguration, TextSubstitution
+from launch.actions import DeclareLaunchArgument
 import xacro
 
 def generate_launch_description():
     pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
     pkg_robot = get_package_share_directory('my_robot')
     
+    # Try to get f1tenth_description, but don't fail if it's not installed
+    try:
+        pkg_f1tenth = get_package_share_directory('f1tenth_description')
+        # Point to models/ subdirectory where model.config files exist
+        f1tenth_models_path = os.path.join(pkg_f1tenth, 'models')
+        model_path = f1tenth_models_path + ':' + os.environ.get('GAZEBO_MODEL_PATH', '')
+    except:
+        model_path = os.environ.get('GAZEBO_MODEL_PATH', '')
+    
     # Set Gazebo model path to find meshes
     gazebo_model_path = SetEnvironmentVariable(
         name='GAZEBO_MODEL_PATH',
-        value=pkg_robot + ':' + os.environ.get('GAZEBO_MODEL_PATH', '')
+        value=model_path
     )
     
     # IMPORTANT: Don't override GAZEBO_RESOURCE_PATH, just append to it
@@ -25,11 +36,15 @@ def generate_launch_description():
     )
 
     # Paths
-    #world_path = os.path.join(pkg_robot, 'worlds', 'empty_world.world')
-    world_path = os.path.join(pkg_robot, 'worlds', 'mitrack.world')
-    #world_path = os.path.join(pkg_robot, 'worlds', 'silverstone_track.world')
-    #world_path = os.path.join(pkg_robot, 'worlds', 'interlagos_track.world')
-    #world_path = os.path.join(pkg_robot, 'worlds', 'monza_track.world')
+    world_arg = DeclareLaunchArgument(
+        'world',
+        default_value='mitrack',
+        description='World to load: mitrack , empty_world'
+    )
+    
+    world_name = LaunchConfiguration('world')
+    # Construct world path (this will be evaluated at launch time)
+    world_path_base = os.path.join(pkg_robot, 'worlds')
     xacro_path = os.path.join(pkg_robot, 'urdf', 'xacros', 'race.xacro')
     
 
@@ -50,12 +65,15 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description_content}]
     )
 
-    # Gazebo launch
+    # Gazebo launch with dynamic world file
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_gazebo_ros, 'launch', 'gazebo.launch.py')
         ),
-        launch_arguments={'world': world_path, 'verbose': 'true'}.items()
+        launch_arguments={
+            'world': [TextSubstitution(text=world_path_base + '/'), world_name, TextSubstitution(text='.world')],
+            'verbose': 'true'
+        }.items()
     )
 
     # Spawn entity after 5 seconds delay (reduced from 20)
@@ -68,9 +86,9 @@ def generate_launch_description():
                 arguments=[
                     '-topic', 'robot_description',
                     '-entity', 'racecar',
-                    '-x', '0.0',
-                    '-y', '0.0',
-                    '-z', '0.1'
+                    '-x', '1.0',
+                    '-y', '-7.0',
+                    '-z', '1.0'
                 ],
                 output='screen'
             )
@@ -92,6 +110,7 @@ def generate_launch_description():
 )
 
     return LaunchDescription([
+        world_arg,
         gazebo_model_path,
         gazebo_resource_path,
         gazebo,

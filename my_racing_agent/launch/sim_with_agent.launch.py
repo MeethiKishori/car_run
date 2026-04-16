@@ -16,7 +16,8 @@ def generate_launch_description():
     
     # 1. Path to the main car model XACRO file 
     # MODIFIED: Changed 'macros.xacro' to 'racecar.xacro' (the main car definition)
-    car_model_path = os.path.join(pkg_share_dir, 'urdf', 'racecar.xacro')
+   # car_model_path = os.path.join(pkg_share_dir, 'urdf', 'racecar.xacro')
+    car_model_path: str = os.path.join(pkg_share_dir, 'urdf', 'racecar.xacro')
     
     # 2. Path to the directory containing all your Gazebo models (e.g., walker_racecourse)
     models_path = os.path.join(pkg_share_dir, 'models')

@@ -47,12 +47,12 @@ class NNWallFollower(Node):
         self.get_logger().info('Neural Network Wall Follower Initialized')
 
         # Publishers and Subscribers
-        self.drive_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.drive_publisher = self.create_publisher(Twist, '/car_1/cmd_vel', 10)
         self.scan_subscriber = self.create_subscription(
-            LaserScan, '/scan', self.scan_callback, 10
+            LaserScan, '/car_1/scan', self.scan_callback, 10
         )
         self.odom_subscriber = self.create_subscription(
-            Odometry, '/odom', self.odom_callback, 10
+            Odometry, '/car_1/odom', self.odom_callback, 10
         )
 
         # Load model and scaler
@@ -79,8 +79,9 @@ class NNWallFollower(Node):
         self.is_config_loaded = False
         
         # Pose
-        self.x = 0.0
-        self.y = 0.0
+        self.x = 1.6
+        self.y = -7.0
+        self.z = 1.0
         self.theta = 0.0
         self.linear_speed = 0.0
         self.angular_speed = 0.0

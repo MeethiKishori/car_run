@@ -46,7 +46,29 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-# 4. Install Configuration files (like controllers.yaml, if applicable)
+# 4. Create symlinks from mesh files into each model folder for Gazebo resolution
+# This allows model.sdf files to find meshes via relative paths after installation
+install(CODE "
+  set(INSTALL_PREFIX \${CMAKE_INSTALL_PREFIX})
+  set(MODELS_DIR \"\${INSTALL_PREFIX}/share/${PROJECT_NAME}/models\")
+  set(MESHES_DIR \"\${INSTALL_PREFIX}/share/${PROJECT_NAME}/meshes\")
+
+  # Function to create symlinks for each model
+  function(create_mesh_symlinks MODEL_NAME MESH_FILE)
+    set(MODEL_MESH_DIR \"\${MODELS_DIR}/\${MODEL_NAME}/meshes\")
+    execute_process(COMMAND \${CMAKE_COMMAND} -E make_directory \"\${MODEL_MESH_DIR}\")
+    execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink 
+      \"\${MESHES_DIR}/\${MESH_FILE}\" 
+      \"\${MODEL_MESH_DIR}/\${MESH_FILE}\")
+  endfunction()
+
+  # Create symlinks for each model's mesh
+  create_mesh_symlinks(cone cone.dae)
+  create_mesh_symlinks(parking_1 parking_1.dae)
+  create_mesh_symlinks(walker_racecourse walker_racecourse.dae)
+")
+
+# 5. Install Configuration files (like controllers.yaml, if applicable)
 install(
   DIRECTORY config
   DESTINATION share/${PROJECT_NAME}

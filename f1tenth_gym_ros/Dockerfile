@@ -31,6 +31,8 @@ RUN apt-get update --fix-missing && \
                        ros-foxy-joint-state-publisher \
                        ros-foxy-navigation2 \
                        ros-foxy-nav2-bringup \
+                       ros-foxy-nav2-behavior-tree \
+                       ros-foxy-nav2-bt-navigator \
                        ros-foxy-slam-toolbox && \
     apt-get -y dist-upgrade && \
     rm -rf /var/lib/apt/lists/*

@@ -7,13 +7,15 @@ slam_toolbox:
     ceres_trust_strategy: LEVENBERG_MARQUARDT
     ceres_dogleg_type: TRADITIONAL_DOGLEG
     ceres_loss_function: None
-
+    use_sim_time: true
     # ROS Parameters
     odom_frame: odom
     map_frame: map
     base_frame: car_1_base_link
     scan_topic: /car_1/scan
     mode: mapping #localization
+    publish_tf: true
+    
 
     # if you'd like to immediately start continuing a map at a given pose
     # or at the dock, but they are mutually exclusive, if pose is given
