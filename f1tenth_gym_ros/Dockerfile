@@ -14,7 +14,7 @@ SHELL ["/bin/bash", "-c"]
 
 # System dependencies
 RUN apt-get update --fix-missing && \
-    apt-get install -y git \
+    apt-get install -y --no-install-recommends git \
                        libeigen3-dev \
                        ros-foxy-rviz2 \
                        nano \
@@ -31,18 +31,16 @@ RUN apt-get update --fix-missing && \
                        ros-foxy-joint-state-publisher \
                        ros-foxy-navigation2 \
                        ros-foxy-nav2-bringup \
-                       ros-foxy-nav2-behavior-tree \
-                       ros-foxy-nav2-bt-navigator \
                        ros-foxy-slam-toolbox && \
-    apt-get -y dist-upgrade && \
     rm -rf /var/lib/apt/lists/*
 
 # Python dependencies
 RUN pip3 install --no-cache-dir transforms3d
 
 # f1tenth gym
-RUN git clone https://github.com/f1tenth/f1tenth_gym
-RUN cd f1tenth_gym && pip3 install -e .
+RUN git clone https://github.com/f1tenth/f1tenth_gym && \
+    cd f1tenth_gym && \
+    pip3 install -e .
 
 # ROS2 gym bridge
 RUN mkdir -p /sim_ws/src/f1tenth_gym_ros

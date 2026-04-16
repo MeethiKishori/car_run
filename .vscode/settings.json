@@ -1,0 +1,18 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "docker restart": true,
+        "/^bash -n dev\\.sh && echo OK$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "./dev.sh": true,
+        "/^bash -n dev\\.sh && \\./dev\\.sh logdir$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^command -v docker-compose \\|\\| true; docker-compose --version \\|\\| true; docker compose version \\|\\| true$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

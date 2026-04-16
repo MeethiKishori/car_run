@@ -60,7 +60,7 @@ def generate_launch_description():
     bt_xml = PathJoinSubstitution([
         FindPackageShare('nav2_bt_navigator'),
         'behavior_trees',
-        'navigate_w_replanning_and_recovery.xml',
+        'navigate_w_replanning_distance.xml',
     ])
 
     # ── 2. Gazebo ─────────────────────────────────────────────────────────────
@@ -85,6 +85,15 @@ def generate_launch_description():
             output='screen'
         )
     ])
+
+    base_link_alias_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='base_link_alias_tf',
+        arguments=['0', '0', '0', '0', '0', '0', 'car_1_base_link', 'base_link'],
+        parameters=[sim],
+        output='screen'
+    )
 
     # ── 4. SLAM toolbox ───────────────────────────────────────────────────────
     slam = TimerAction(period=7.0, actions=[
@@ -140,8 +149,19 @@ def generate_launch_description():
             package='nav2_bt_navigator',
             executable='bt_navigator',
             name='bt_navigator',
+            respawn=True,
+            respawn_delay=2.0,
             output='screen',
-            parameters=[nav2_params_file, sim, {'default_bt_xml_filename': bt_xml}],
+            parameters=[
+                nav2_params_file,
+                sim,
+                {
+                    'default_bt_xml_filename': bt_xml,
+                    'robot_base_frame': 'car_1_base_link',
+                    'global_frame': 'map',
+                    'odom_topic': '/car_1/odom',
+                },
+            ],
             remappings=[
                 ('/odom', '/car_1/odom'),
             ]
@@ -201,6 +221,7 @@ def generate_launch_description():
         set_resource_path,
         gazebo,
         rsp,
+        base_link_alias_tf,
         spawn,
         slam,
         controller,
