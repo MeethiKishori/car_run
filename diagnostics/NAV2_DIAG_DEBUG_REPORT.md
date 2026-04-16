@@ -13,6 +13,7 @@ For every new issue cycle, update this file with:
 2. Root cause evidence (log-based)
 3. Solution applied (what changed)
 4. Validation result (what passed/what still fails)
+5. Append updates immediately after every code/config/script change in the same work session.
 
 Keep explanations short and practical.
 
@@ -609,3 +610,79 @@ docker exec -it f1tenth_gym_ros-sim-1 bash -lc 'source /opt/ros/foxy/setup.bash 
 ```
 
 If this list already contains old Nav2 nodes before launching, restart container first.
+
+## Latest Update (2026-04-16, Late Night)
+
+### Operator request
+
+1. Keep report updated after every change.
+2. Investigate repeated runtime pattern:
+   - `Message Filter dropping message: frame 'car_1_laser' ... reason 'Unknown'`
+   - `bt_navigator ... "send_goal failed"`
+3. Recheck launch wiring and Nav2/SLAM params end-to-end.
+
+### New findings
+
+1. System CPU stayed very high (~780-800%), dominated by Gazebo + RViz + SLAM + Nav2 planner/controller.
+2. TF/scan timing jitter under load caused intermittent SLAM message-filter drops for `car_1_laser`.
+3. Those timing stalls correlated with Nav2 callback failures (`send_goal failed`) even when user goal input was valid.
+4. Lifecycle status checks could intermittently look "unavailable" under heavy load due to CLI timeout behavior.
+
+### Changes applied
+
+1. `dev.sh`
+   - Re-added `headless` command for manual GUI-off mode.
+   - Re-added `save_map` command to store maps under `my_robot/maps/`.
+   - Improved `perf` lifecycle checks:
+     - If lifecycle query times out, script now checks whether lifecycle service exists before marking node unavailable.
+     - Recommendation logic now distinguishes true node-down from timeout-under-load.
+
+2. `my_robot/launch/diag_launch.py`
+   - RViz launch now forces fixed frame to `map` (`-f map`) to reduce empty-frame transform warning spam.
+   - Existing Nav2 respawn wiring for `bt_navigator` kept intact.
+
+3. `my_robot/config/slam/slam_toolbox_params.yaml`
+   - `map_file_name` kept at `/sim_ws/src/my_robot/maps/mitrack_map` (project-local map save).
+   - Load/TF robustness tuning:
+     - `throttle_scans: 1 -> 2`
+     - `minimum_time_interval: 0.5 -> 0.25`
+     - `transform_timeout: 0.5 -> 1.0`
+     - `tf_buffer_duration: 60 -> 120`
+
+4. `my_robot/config/nav2/nav2_params.yaml`
+   - Reduced controller pressure and increased tolerance to TF jitter:
+     - `controller_frequency: 8.0 -> 6.0`
+     - `required_movement_radius: 0.5 -> 0.2`
+     - `movement_time_allowance: 10.0 -> 20.0`
+     - `xy_goal_tolerance: 0.25 -> 0.30`
+     - `yaw_goal_tolerance: 0.25 -> 0.30`
+     - `desired_linear_vel: 0.35 -> 0.28`
+     - `lookahead_dist: 0.6 -> 0.5`
+     - `min_lookahead_dist: 0.3 -> 0.25`
+     - RPP `transform_tolerance: 0.5 -> 0.8`
+     - recoveries `transform_tolerance: 0.5 -> 0.8`
+     - `waypoint_follower.loop_rate: 10 -> 5`
+     - local costmap: `update_frequency: 3.0 -> 2.0`, `publish_frequency: 1.0 -> 0.5`, added `transform_tolerance: 0.8`
+     - global costmap: `update_frequency: 0.5 -> 0.3`, `publish_frequency: 0.5 -> 0.3`, added `transform_tolerance: 0.8`
+
+5. `my_robot/urdf/xacros/race.xacro`
+   - Reduced lidar plugin rate:
+     - `<update_rate>40</update_rate> -> <update_rate>20</update_rate>`
+
+### Validation snapshot
+
+1. Syntax checks passed:
+   - `bash -n dev.sh`
+   - `python3 -m py_compile my_robot/launch/diag_launch.py`
+2. Parameter grep verification confirmed all new values are present in config files.
+3. Remaining risk: with very high CPU, occasional transient TF drop lines may still appear; frequency should reduce after headless mode and lower sensor/controller rates.
+
+### Current operating sequence
+
+1. `./dev.sh stop`
+2. `docker restart f1tenth_gym_ros-sim-1`
+3. `./dev.sh launch`
+4. Wait 25-30 seconds.
+5. `./dev.sh headless`
+6. `./dev.sh perf`
+7. Send one goal at a time (no rapid repeated goal spam).
