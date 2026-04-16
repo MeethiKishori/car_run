@@ -93,25 +93,19 @@ COMMANDS:
 
 ───────────────────────────────────────────────────────────────────────────
 
-12. save_map
-    Save current SLAM map with timestamp to my_robot/maps/
-    Usage: ./dev.sh save_map [map_name]
-    
-    Examples:
-      ./dev.sh save_map                    (saves as mitrack_map_TIMESTAMP)
-      ./dev.sh save_map levine_custom      (saves as levine_custom.yaml)
-
-───────────────────────────────────────────────────────────────────────────
-
-13. headless
+12. headless
     Close Gazebo GUI (gzclient) and keep simulation server (gzserver) running
     Usage: ./dev.sh headless
 
 ───────────────────────────────────────────────────────────────────────────
 
-14. goal_status
-    Show /navigate_to_pose action status and active lifecycle nodes
-    Usage: ./dev.sh goal_status
+13. save_map
+    Save current SLAM map with optional name to my_robot/maps/
+    Usage: ./dev.sh save_map [map_name]
+    
+    Examples:
+      ./dev.sh save_map                    (saves as mitrack_map_TIMESTAMP)
+      ./dev.sh save_map levine_custom      (saves as levine_custom.yaml)
 
 ═════════════════════════════════════════════════════════════════════════════
 EOF
@@ -464,17 +458,30 @@ echo ''
 
 echo '=== Lifecycle states ==='
 for n in /controller_server /planner_server /recoveries_server /bt_navigator /waypoint_follower; do
-  state=\$(ros2 lifecycle get \"\$n\" 2>/dev/null | tr '\n' ' ' || true)
-  if [ -n \"\$state\" ]; then
-    echo \"\$n -> \$state\"
-  else
-    echo \"\$n -> unavailable\"
-  fi
+    state=\$(ros2 lifecycle get \"\$n\" 2>/dev/null | tr '\n' ' ' || true)
+    if [ -n \"\$state\" ]; then
+        echo \"\$n -> \$state\"
+    else
+        svc=\"\${n}/get_state\"
+        if ros2 service list 2>/dev/null | grep -qx \"\$svc\"; then
+            echo \"\$n -> lifecycle service present (state query timeout under load)\"
+        else
+            echo \"\$n -> unavailable\"
+        fi
+    fi
 done
 "
 
     bt_state="$(docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
 ros2 lifecycle get /bt_navigator 2>/dev/null | tr '\n' ' ' || true
+")"
+
+        nav_action_present="$(docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
+ros2 action list 2>/dev/null | grep -qx '/navigate_to_pose' && echo yes || echo no
+")"
+
+        bt_get_state_present="$(docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
+ros2 service list 2>/dev/null | grep -qx '/bt_navigator/get_state' && echo yes || echo no
 ")"
 
     latest_log_dir="$(latest_ros_log_dir_in_container)"
@@ -495,6 +502,9 @@ ros2 lifecycle get /bt_navigator 2>/dev/null | tr '\n' ' ' || true
 
     if echo "$bt_state" | grep -qi 'active \[3\]'; then
         echo "bt_navigator is ACTIVE: prefer cancel+single retry before relaunch."
+    elif [ "$nav_action_present" = "yes" ] || [ "$bt_get_state_present" = "yes" ]; then
+        echo "bt_navigator appears UP (action/service present), but lifecycle query timed out under load."
+        echo "Action: use headless mode (./dev.sh headless), wait 3-5s, then send one goal."
     else
         echo "bt_navigator is NOT active: relaunch is recommended (./dev.sh launch)."
     fi
@@ -565,6 +575,20 @@ ros2 action list 2>/dev/null | sort || true"
     print_success "Wrote snapshot: $out"
 }
 
+headless() {
+    print_header "Switch To Headless Gazebo"
+
+    require_container
+
+    print_info "Stopping Gazebo GUI client (gzclient)"
+    docker exec -i "$CONTAINER" bash -lc "pkill -x gzclient || true"
+
+    print_info "Process status after switch:"
+    docker exec -i "$CONTAINER" bash -lc 'echo "  gzserver: $(pgrep -x gzserver | wc -l)"; echo "  gzclient: $(pgrep -x gzclient | wc -l)"'
+
+    print_success "Headless mode enabled (simulation still running in gzserver)"
+}
+
 save_map() {
     print_header "Save SLAM Map"
 
@@ -590,43 +614,6 @@ ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap '{name: {data:
         print_info "Checking container for map files..."
         docker exec -i "$CONTAINER" bash -lc "ls -lh /sim_ws/src/my_robot/maps/${map_name}* 2>/dev/null || echo 'Check SLAM logs if no files created'"
     fi
-}
-
-headless() {
-    print_header "Switch To Headless Gazebo"
-
-    require_container
-
-    print_info "Stopping Gazebo GUI client (gzclient)"
-    docker exec -i "$CONTAINER" bash -lc "pkill -x gzclient || true"
-
-    print_info "Process status after switch:"
-    docker exec -i "$CONTAINER" bash -lc 'echo "  gzserver: $(pgrep -x gzserver | wc -l)"; echo "  gzclient: $(pgrep -x gzclient | wc -l)"'
-
-    print_success "Headless mode enabled (simulation still running in gzserver)"
-}
-
-goal_status() {
-        print_header "NavigateToPose Goal Status"
-
-        require_container
-
-        docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
-
-echo '=== Action info: /navigate_to_pose ==='
-ros2 action info /navigate_to_pose 2>/dev/null || echo 'Action server not available'
-echo ''
-
-echo '=== Lifecycle quick check ==='
-for n in /controller_server /planner_server /recoveries_server /bt_navigator /waypoint_follower; do
-    state=\$(ros2 lifecycle get \"\$n\" 2>/dev/null | tr '\n' ' ' || true)
-    if [ -n \"\$state\" ]; then
-        echo \"\$n -> \$state\"
-    else
-        echo \"\$n -> unavailable\"
-    fi
-done
-"
 }
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -667,14 +654,11 @@ case "${1:-help}" in
     capture)
         capture
         ;;
-    save_map)
-        save_map "$2"
-        ;;
     headless)
         headless
         ;;
-    goal_status)
-        goal_status
+    save_map)
+        save_map "$2"
         ;;
     help|--help|-h|"")
         usage

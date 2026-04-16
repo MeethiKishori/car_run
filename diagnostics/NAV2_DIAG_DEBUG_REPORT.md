@@ -184,10 +184,6 @@ Why:
 
 1. This reduces duplication, image size, and maintenance overhead.
 
-## Latest Update (2026-04-16)
-
-### New findings (latest cycle)
-
 1. Running `./dev.sh launch` after previous attempts could still leave multiple ROS2/Nav2 nodes.
 2. User needed launch to include build so manual source/build flow is not required each time.
 3. Duplicate-node state caused unstable navigation behavior and intermittent errors.
