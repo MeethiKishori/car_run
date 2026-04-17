@@ -1,0 +1,1 @@
+timestamp_sec,pose_x,pose_y,pose_yaw,odom_linear_x,odom_angular_z,cmd_linear_x,cmd_angular_z,imu_ax,imu_ay,imu_az,imu_gx,imu_gy,imu_gz,scan_count,scan_min,scan_max,scan_mean,scan_std,scan_front_min,scan_left_min,scan_right_min,traj_nearest_idx,traj_target_idx,traj_cross_track_error,traj_heading_error,traj_goal_distance

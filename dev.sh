@@ -161,7 +161,18 @@ COMMANDS:
 
 ───────────────────────────────────────────────────────────────────────────
 
-19. maps
+19. data_collect
+    Collect navigation dataset (sensors + controls + state + error metrics)
+    Usage: ./dev.sh data_collect [output_csv] [trajectory_csv]
+
+    Examples:
+    ./dev.sh data_collect
+    ./dev.sh data_collect run1.csv
+    ./dev.sh data_collect run1.csv moretrack_trajectory.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+20. maps
     List all available map files in my_robot/maps/
     Usage: ./dev.sh maps
 
@@ -241,6 +252,9 @@ pkill -f "/sim_ws/install/my_robot/lib/my_robot/trajectory_follower" || true
 pkill -f "pid_trajectory_follower" || true
 pkill -f "ros2 run my_robot pid_trajectory_follower" || true
 pkill -f "/sim_ws/install/my_robot/lib/my_robot/pid_trajectory_follower" || true
+pkill -f "navigation_data_collector" || true
+pkill -f "ros2 run my_robot navigation_data_collector" || true
+pkill -f "/sim_ws/install/my_robot/lib/my_robot/navigation_data_collector" || true
 pkill -f "waypoint_recorder" || true
 pkill -f "ros2 run my_robot waypoint_recorder" || true
 pkill -f "trajectory_builder" || true
@@ -813,6 +827,60 @@ trajectory_follow_non_pid() {
     trajectory_follow_with_node "trajectory_follower" "Non-PID (Pure Pursuit style)" "$1"
 }
 
+data_collect() {
+    print_header "Collect Navigation Dataset"
+
+    require_container
+
+    output_csv="$1"
+    trajectory_csv="$2"
+
+    if [ -z "$output_csv" ]; then
+        output_csv="nav_dataset_$(date +%Y%m%d_%H%M%S).csv"
+    fi
+    if [[ "$output_csv" != *.csv ]]; then
+        output_csv="${output_csv}.csv"
+    fi
+
+    if [ -z "$trajectory_csv" ]; then
+        trajectory_csv="$(ls -1t ./my_robot/maps/*trajectory*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+    if [[ -n "$trajectory_csv" && "$trajectory_csv" != *.csv ]]; then
+        trajectory_csv="${trajectory_csv}.csv"
+    fi
+
+    output_path="/sim_ws/src/my_robot/datasets/${output_csv}"
+
+    if [ -n "$trajectory_csv" ]; then
+        trajectory_path="/sim_ws/src/my_robot/maps/${trajectory_csv}"
+        print_info "Trajectory for error metrics: ${trajectory_path}"
+        traj_param="-p trajectory_file:='${trajectory_path}'"
+    else
+        print_info "No trajectory found; error metrics will be NaN"
+        traj_param=""
+    fi
+
+    print_info "Dataset output: ${output_path}"
+    print_info "Topics: /car_1/scan, /car_1/imu, /car_1/odom, /car_1/cmd_vel"
+    print_info "Press Ctrl+C to stop collection"
+    echo ""
+
+    docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+mkdir -p /sim_ws/src/my_robot/datasets
+source install/setup.bash
+ros2 run my_robot navigation_data_collector --ros-args -p output_file:='${output_path}' ${traj_param} -p global_frame:='map' -p robot_frame:='car_1_base_link' -p scan_topic:='/car_1/scan' -p imu_topic:='/car_1/imu' -p odom_topic:='/car_1/odom' -p cmd_topic:='/car_1/cmd_vel' -p log_rate:=20.0
+"
+
+    if ls ./my_robot/datasets/${output_csv} 1>/dev/null 2>&1; then
+        print_success "Dataset saved: ./my_robot/datasets/${output_csv}"
+        print_info "Preview:"
+        head -n 5 ./my_robot/datasets/${output_csv}
+    else
+        print_info "Dataset should be at: ${output_path}"
+    fi
+}
+
 maps() {
     print_header "Available Map Files"
     
@@ -899,6 +967,9 @@ case "${1:-help}" in
         ;;
     trajectory_follow_non_pid)
         trajectory_follow_non_pid "$2"
+        ;;
+    data_collect)
+        data_collect "$2" "$3"
         ;;
     maps)
         maps

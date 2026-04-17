@@ -1122,3 +1122,102 @@ Never compare `tf.header.stamp` to `rclpy.Clock().now()` in a simulation — the
    - `trajectory_follow`
    - `trajectory_follow_pid`
    - `trajectory_follow_non_pid`
+
+---
+
+## Latest Update (2026-04-17, Navigation Data Collection Pipeline)
+
+### Operator request
+
+1. Collect data during navigation for analysis/learning.
+2. Include sensor readings, control inputs, system state, and error metrics.
+3. Store data in a structured dataset for future use.
+
+### Solution applied
+
+1. Added new ROS2 node:
+   - `my_robot/my_robot/navigation_data_collector.py`
+2. Added package entry point in `my_robot/setup.py`:
+   - `navigation_data_collector = my_robot.navigation_data_collector:main`
+3. Added dependency in `my_robot/package.xml`:
+   - `sensor_msgs`
+4. Added new `dev.sh` command:
+   - `./dev.sh data_collect [output_csv] [trajectory_csv]`
+5. Added cleanup kill patterns for `navigation_data_collector` in `cleanup_runtime()`.
+
+### Dataset content (CSV schema)
+
+1. Timestamp:
+   - `timestamp_sec`
+2. System state (pose/velocity):
+   - `pose_x, pose_y, pose_yaw`
+   - `odom_linear_x, odom_angular_z`
+3. Control inputs:
+   - `cmd_linear_x, cmd_angular_z`
+4. IMU readings:
+   - `imu_ax, imu_ay, imu_az`
+   - `imu_gx, imu_gy, imu_gz`
+5. Lidar readings (structured summary):
+   - `scan_count, scan_min, scan_max, scan_mean, scan_std`
+   - `scan_front_min, scan_left_min, scan_right_min`
+6. Trajectory error metrics (if trajectory file provided):
+   - `traj_nearest_idx, traj_target_idx`
+   - `traj_cross_track_error, traj_heading_error, traj_goal_distance`
+
+### Topics used
+
+1. `/car_1/scan` (Lidar)
+2. `/car_1/imu` (IMU, if available)
+3. `/car_1/odom` (odometry)
+4. `/car_1/cmd_vel` (applied control)
+5. TF: `map -> car_1_base_link` for pose extraction
+
+### Output and usage
+
+1. Default output path:
+   - `my_robot/datasets/nav_dataset_<timestamp>.csv`
+2. Start collection:
+   - `./dev.sh data_collect`
+3. With explicit output and trajectory metrics:
+   - `./dev.sh data_collect run1.csv moretrack_trajectory.csv`
+4. Stop with `Ctrl+C`.
+
+### Validation
+
+1. `python3 -m py_compile my_robot/my_robot/navigation_data_collector.py` -> OK
+2. `bash -n dev.sh` -> OK
+3. `./dev.sh --help` shows `data_collect` command.
+
+---
+
+## Latest Update (2026-04-17, data_collect Runtime Fix)
+
+### Operator symptom
+
+1. `./dev.sh data_collect` crashed during runtime with:
+   - `ValueError: not enough values to unpack (expected 8, got 7)`
+2. Failure point: `_log_step()` unpacking scan statistics tuple.
+
+### Root cause
+
+1. `_scan_stats()` had inconsistent tuple sizes across branches.
+2. Two early-return branches returned 7 values instead of 8.
+3. Normal branch returned 8 values, causing intermittent unpack mismatch depending on scan readiness.
+
+### Fix applied
+
+1. Updated `_scan_stats()` return annotation to 8 values.
+2. Updated all early-return branches to return 8 values consistently.
+3. File changed:
+   - `my_robot/my_robot/navigation_data_collector.py`
+
+### Validation
+
+1. `python3 -m py_compile my_robot/my_robot/navigation_data_collector.py` -> OK
+
+### Operator action required
+
+1. Rebuild workspace so container uses updated node code:
+   - `./dev.sh build`
+2. Re-run collector:
+   - `./dev.sh data_collect`

@@ -45,6 +45,7 @@ setup(
             'trajectory_builder = my_robot.trajectory_builder:main',
             'trajectory_follower = my_robot.trajectory_follower:main',
             'pid_trajectory_follower = my_robot.pid_trajectory_follower:main',
+            'navigation_data_collector = my_robot.navigation_data_collector:main',
         ],
     },
 )
