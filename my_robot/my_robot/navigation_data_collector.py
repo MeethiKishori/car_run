@@ -88,14 +88,10 @@ class NavigationDataCollector(Node):
         self.writer = csv.writer(self.csv_file)
         self.writer.writerow([
             "timestamp_sec",
-            "pose_x", "pose_y", "pose_yaw",
             "odom_linear_x", "odom_angular_z",
             "cmd_linear_x", "cmd_angular_z",
-            "imu_ax", "imu_ay", "imu_az",
-            "imu_gx", "imu_gy", "imu_gz",
-            "scan_count", "scan_min", "scan_max", "scan_mean", "scan_std",
+            "scan_min", "scan_mean", "scan_std",
             "scan_front_min", "scan_left_min", "scan_right_min",
-            "traj_nearest_idx", "traj_target_idx",
             "traj_cross_track_error", "traj_heading_error", "traj_goal_distance",
         ])
 
@@ -262,14 +258,10 @@ class NavigationDataCollector(Node):
 
         self.writer.writerow([
             safe_float(now),
-            safe_float(pose_x), safe_float(pose_y), safe_float(pose_yaw),
             safe_float(odom_vx), safe_float(odom_wz),
             safe_float(cmd_vx), safe_float(cmd_wz),
-            safe_float(imu_ax), safe_float(imu_ay), safe_float(imu_az),
-            safe_float(imu_gx), safe_float(imu_gy), safe_float(imu_gz),
-            safe_float(scan_count), safe_float(scan_min), safe_float(scan_max), safe_float(scan_mean), safe_float(scan_std),
+            safe_float(scan_min), safe_float(scan_mean), safe_float(scan_std),
             safe_float(front_min), safe_float(left_min), safe_float(right_min),
-            safe_float(nearest_idx), safe_float(target_idx),
             safe_float(cte), safe_float(heading_err), safe_float(goal_dist),
         ])
         self.csv_file.flush()

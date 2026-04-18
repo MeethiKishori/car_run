@@ -277,6 +277,80 @@ Why:
 
 1. User was repeatedly running `conda activate ROS2` manually before using `./dev.sh` commands.
 2. Centralizing host environment activation reduces setup friction and avoids per-terminal drift.
+
+### 14. Removed accidental workspace-local conda environment
+
+What changed:
+
+1. Removed the local `.conda/` directory from the repository root.
+
+How:
+
+1. Verified `.conda/` existed in the workspace root.
+2. Deleted only that local environment directory and left the named `ROS2` conda environment unchanged.
+
+Why:
+
+1. Shell prompts were switching to a path-based environment name from the repo-local `.conda` environment.
+2. User already has a separate `ROS2` conda environment and wanted the accidental local one removed.
+
+### 15. Data collection schema reduced to BC-required columns
+
+What changed:
+
+1. Reduced `navigation_data_collector` CSV output to BC training required columns only.
+2. Removed non-training columns from new datasets: `pose_*`, `imu_*`, `scan_count`, `scan_max`, `traj_nearest_idx`, `traj_target_idx`.
+
+How:
+
+1. Updated CSV header and row writer in `my_robot/my_robot/navigation_data_collector.py`.
+2. Kept all BC-required features and targets unchanged:
+   - `odom_linear_x`, `odom_angular_z`
+   - `scan_min`, `scan_mean`, `scan_std`
+   - `scan_front_min`, `scan_left_min`, `scan_right_min`
+   - `traj_cross_track_error`, `traj_heading_error`, `traj_goal_distance`
+   - `cmd_linear_x`, `cmd_angular_z`
+
+Why:
+
+1. User observed many NaN-heavy columns not used by BC training.
+2. Keeping only training-needed fields makes datasets cleaner and easier to inspect while preserving model compatibility.
+
+### 16. Backfilled existing dataset CSV files to reduced schema
+
+What changed:
+
+1. Rewrote existing files under `my_robot/datasets/` to keep only BC-required columns.
+2. Applied to:
+   - `my_robot/datasets/saturday_data_collect.csv`
+   - `my_robot/datasets/run1.csv`
+   - `my_robot/datasets/nav_dataset_20260417_015838.csv`
+   - `my_robot/datasets/nav_dataset_20260417_020049.csv`
+
+How:
+
+1. Per-file CSV rewrite by header name, preserving row order and keeping only required fields.
+2. Included carriage-return-safe header parsing to handle legacy CSV line endings.
+
+Why:
+
+1. User requested cleanup of already recorded datasets, not only future captures.
+2. Ensures older datasets are immediately compatible with the simplified BC-focused schema.
+
+### 17. Fixed trajectory_follow_bc executable name
+
+What changed:
+
+1. Corrected `dev.sh` command in `trajectory_follow_bc` from invalid executable name to `bc_trajectory_follower`.
+
+How:
+
+1. Updated `ros2 run my_robot ...` line to use the console script defined in `my_robot/setup.py`.
+
+Why:
+
+1. User run showed `No executable found` when calling `./dev.sh trajectory_follow_bc ...`.
+2. Root cause was a typo (`ory_follower`) in the command string.
 6. Makes cleanup step robust even when process-kill commands return non-zero exit statuses.
 7. Reduces CPU pressure and frame-timing jitter, which helps prevent control loop deadline misses and intermittent action aborts.
 8. Clarifies restart policy: restart is not required every run; use restart only if duplicate critical nodes survive cleanup.

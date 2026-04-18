@@ -1099,7 +1099,7 @@ trajectory_follow_bc() {
     docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
 
 source install/setup.bash
-ros2 run my_robot  ory_follower --ros-args -p model_file:='${model_path}' -p trajectory_file:='${trajectory_path}' -p global_frame:='map' -p robot_frame:='car_1_base_link' -p scan_topic:='/car_1/scan' -p odom_topic:='/car_1/odom' -p cmd_topic:='/car_1/cmd_vel' -p control_rate:=20.0
+ros2 run my_robot bc_trajectory_follower --ros-args -p model_file:='${model_path}' -p trajectory_file:='${trajectory_path}' -p global_frame:='map' -p robot_frame:='car_1_base_link' -p scan_topic:='/car_1/scan' -p odom_topic:='/car_1/odom' -p cmd_topic:='/car_1/cmd_vel' -p control_rate:=20.0
 "
 
     print_success "BC trajectory follower stopped"
