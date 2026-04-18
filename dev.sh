@@ -91,6 +91,137 @@ COMMANDS:
     Capture triage snapshot to host file under diagnostics/
     Usage: ./dev.sh capture
 
+───────────────────────────────────────────────────────────────────────────
+
+12. headless
+    Close Gazebo GUI (gzclient) and keep simulation server (gzserver) running
+    Usage: ./dev.sh headless
+
+───────────────────────────────────────────────────────────────────────────
+
+13. save_map
+    Save current SLAM map with optional name to my_robot/maps/
+    Usage: ./dev.sh save_map [map_name]
+    
+    Examples:
+      ./dev.sh save_map                    (saves as mitrack_map_TIMESTAMP)
+      ./dev.sh save_map levine_custom      (saves as levine_custom.yaml)
+
+───────────────────────────────────────────────────────────────────────────
+
+14. waypoint_record
+        Record RViz clicked waypoints (/clicked_point) and save CSV in my_robot/maps/
+        Usage: ./dev.sh waypoint_record [csv_name]
+    
+        Examples:
+            ./dev.sh waypoint_record
+            ./dev.sh waypoint_record mitrack_waypoints.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+15. trajectory_build
+        Convert waypoint CSV to dense reference trajectory CSV
+        Usage: ./dev.sh trajectory_build [waypoint_csv] [trajectory_csv]
+
+        Examples:
+            ./dev.sh trajectory_build
+            ./dev.sh trajectory_build waypoints_20260416_232730.csv
+            ./dev.sh trajectory_build waypoints.csv mitrack_ref_traj.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+16. trajectory_follow
+    Follow reference trajectory CSV using PID controller (default)
+    Usage: ./dev.sh trajectory_follow [trajectory_csv]
+
+    Examples:
+      ./dev.sh trajectory_follow
+    ./dev.sh trajectory_follow saturday_ref_traj.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+17. trajectory_follow_pid
+    Follow reference trajectory CSV using PID controller (explicit)
+    Usage: ./dev.sh trajectory_follow_pid [trajectory_csv]
+
+    Examples:
+      ./dev.sh trajectory_follow_pid
+      ./dev.sh trajectory_follow_pid moretrack_trajectory.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+18. trajectory_follow_non_pid
+    Follow reference trajectory CSV using legacy non-PID controller
+    (geometric pure-pursuit style heading controller)
+    Usage: ./dev.sh trajectory_follow_non_pid [trajectory_csv]
+
+    Examples:
+      ./dev.sh trajectory_follow_non_pid
+      ./dev.sh trajectory_follow_non_pid moretrack_trajectory.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+19. data_collect
+    Collect navigation dataset (sensors + controls + state + error metrics)
+    Usage: ./dev.sh data_collect [output_csv] [trajectory_csv]
+
+    Examples:
+    ./dev.sh data_collect
+    ./dev.sh data_collect pid_sat_run1.csv saturday_ref_traj.csv
+    ./dev.sh data_collect bc_sat_run1.csv saturday_ref_traj.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+20. bc_train
+    Train behavioral-cloning model from dataset CSV
+    Usage: ./dev.sh bc_train [dataset_csv] [model_json]
+
+    Examples:
+    ./dev.sh bc_train
+    ./dev.sh bc_train saturday_data_collect.csv saturday.json
+    ./dev.sh bc_train bc_sat_run1.csv bc_sat_model1.json
+
+───────────────────────────────────────────────────────────────────────────
+
+21. bc_train_host
+    Train behavioral-cloning model on HOST (no Docker/ROS needed)
+    Usage: ./dev.sh bc_train_host [dataset_csv] [model_json]
+
+    Examples:
+    ./dev.sh bc_train_host
+    ./dev.sh bc_train_host nav_dataset_20260417_020049.csv
+    ./dev.sh bc_train_host run1.csv bc_model_run1.json
+
+───────────────────────────────────────────────────────────────────────────
+
+22. trajectory_follow_bc
+    Follow trajectory using trained behavioral-cloning model
+    Usage: ./dev.sh trajectory_follow_bc [model_json] [trajectory_csv]
+
+    Examples:
+    ./dev.sh trajectory_follow_bc
+    ./dev.sh trajectory_follow_bc saturday.json saturday_ref_traj.csv
+    ./dev.sh trajectory_follow_bc bc_sat_model1.json saturday_ref_traj.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+23. maps
+    List all available map files in my_robot/maps/
+    Usage: ./dev.sh maps
+
+───────────────────────────────────────────────────────────────────────────
+
+24. compare_controllers
+    Compare PID vs BC controller datasets (accuracy, robustness, efficiency)
+    and generate graphs + markdown report
+    Usage: ./dev.sh compare_controllers [pid_glob] [bc_glob] [output_dir]
+
+    Examples:
+    ./dev.sh compare_controllers
+    ./dev.sh compare_controllers 'pid_sat_run1.csv' 'bc_sat_run1.csv'
+    ./dev.sh compare_controllers 'pid_sat_run*.csv' 'bc_sat_run*.csv'
+    ./dev.sh compare_controllers 'pid_sat_run*.csv' 'bc_sat_run*.csv' ./my_robot/results/sat_compare
+
 ═════════════════════════════════════════════════════════════════════════════
 EOF
     exit 0
@@ -123,6 +254,42 @@ print_info() {
 
 CONTAINER="f1tenth_gym_ros-sim-1"
 LAUNCH_LOG="/tmp/diag_launch.log"
+ROS2_CONDA_ENV="${ROS2_CONDA_ENV:-ROS2}"
+
+activate_host_ros2_env() {
+    # Best effort: keep docker-only commands working even if conda is unavailable.
+    if [ "${DEV_SH_SKIP_ROS2_ENV:-0}" = "1" ]; then
+        return 0
+    fi
+
+    if [ "${CONDA_DEFAULT_ENV:-}" = "$ROS2_CONDA_ENV" ]; then
+        return 0
+    fi
+
+    if command -v conda >/dev/null 2>&1; then
+        conda_base="$(conda info --base 2>/dev/null || true)"
+        if [ -n "$conda_base" ] && [ -f "$conda_base/etc/profile.d/conda.sh" ]; then
+            # shellcheck source=/dev/null
+            source "$conda_base/etc/profile.d/conda.sh"
+        fi
+    else
+        for conda_sh in \
+            "$HOME/miniconda3/etc/profile.d/conda.sh" \
+            "$HOME/anaconda3/etc/profile.d/conda.sh" \
+            "$HOME/mambaforge/etc/profile.d/conda.sh" \
+            "$HOME/miniforge3/etc/profile.d/conda.sh"; do
+            if [ -f "$conda_sh" ]; then
+                # shellcheck source=/dev/null
+                source "$conda_sh"
+                break
+            fi
+        done
+    fi
+
+    if command -v conda >/dev/null 2>&1; then
+        conda activate "$ROS2_CONDA_ENV" >/dev/null 2>&1 || true
+    fi
+}
 
 latest_ros_log_dir_in_container() {
     docker exec -i "$CONTAINER" bash -lc 'ls -1dt /root/.ros/log/*/ 2>/dev/null | head -n 1 | sed "s:/$::"'
@@ -161,7 +328,21 @@ pkill -f "/opt/ros/foxy/lib/nav2_" || true
 pkill -f "/opt/ros/foxy/lib/slam_toolbox/async_slam_toolbox_node" || true
 pkill -f "/opt/ros/foxy/lib/gazebo_ros/spawn_entity.py" || true
 pkill -f "/opt/ros/foxy/lib/rviz2/rviz2" || true
-pkill -f "gzclient" || true
+pkill -f "trajectory_follower" || true
+pkill -f "ros2 run my_robot trajectory_follower" || true
+pkill -f "/sim_ws/install/my_robot/lib/my_robot/trajectory_follower" || true
+pkill -f "pid_trajectory_follower" || true
+pkill -f "ros2 run my_robot pid_trajectory_follower" || true
+pkill -f "/sim_ws/install/my_robot/lib/my_robot/pid_trajectory_follower" || true
+pkill -f "navigation_data_collector" || true
+pkill -f "ros2 run my_robot navigation_data_collector" || true
+pkill -f "/sim_ws/install/my_robot/lib/my_robot/navigation_data_collector" || true
+pkill -f "bc_trajectory_follower" || true
+pkill -f "ros2 run my_robot bc_trajectory_follower" || true
+pkill -f "/sim_ws/install/my_robot/lib/my_robot/bc_trajectory_follower" || true
+pkill -f "waypoint_recorder" || true
+pkill -f "ros2 run my_robot waypoint_recorder" || true
+pkill -f "trajectory_builder" || true
 pkill -f "gzserver" || true
 rm -f /tmp/diag_launch.log
 sleep 1
@@ -443,17 +624,30 @@ echo ''
 
 echo '=== Lifecycle states ==='
 for n in /controller_server /planner_server /recoveries_server /bt_navigator /waypoint_follower; do
-  state=\$(ros2 lifecycle get \"\$n\" 2>/dev/null | tr '\n' ' ' || true)
-  if [ -n \"\$state\" ]; then
-    echo \"\$n -> \$state\"
-  else
-    echo \"\$n -> unavailable\"
-  fi
+    state=\$(ros2 lifecycle get \"\$n\" 2>/dev/null | tr '\n' ' ' || true)
+    if [ -n \"\$state\" ]; then
+        echo \"\$n -> \$state\"
+    else
+        svc=\"\${n}/get_state\"
+        if ros2 service list 2>/dev/null | grep -qx \"\$svc\"; then
+            echo \"\$n -> lifecycle service present (state query timeout under load)\"
+        else
+            echo \"\$n -> unavailable\"
+        fi
+    fi
 done
 "
 
     bt_state="$(docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
 ros2 lifecycle get /bt_navigator 2>/dev/null | tr '\n' ' ' || true
+")"
+
+        nav_action_present="$(docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
+ros2 action list 2>/dev/null | grep -qx '/navigate_to_pose' && echo yes || echo no
+")"
+
+        bt_get_state_present="$(docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
+ros2 service list 2>/dev/null | grep -qx '/bt_navigator/get_state' && echo yes || echo no
 ")"
 
     latest_log_dir="$(latest_ros_log_dir_in_container)"
@@ -474,6 +668,9 @@ ros2 lifecycle get /bt_navigator 2>/dev/null | tr '\n' ' ' || true
 
     if echo "$bt_state" | grep -qi 'active \[3\]'; then
         echo "bt_navigator is ACTIVE: prefer cancel+single retry before relaunch."
+    elif [ "$nav_action_present" = "yes" ] || [ "$bt_get_state_present" = "yes" ]; then
+        echo "bt_navigator appears UP (action/service present), but lifecycle query timed out under load."
+        echo "Action: use headless mode (./dev.sh headless), wait 3-5s, then send one goal."
     else
         echo "bt_navigator is NOT active: relaunch is recommended (./dev.sh launch)."
     fi
@@ -544,9 +741,448 @@ ros2 action list 2>/dev/null | sort || true"
     print_success "Wrote snapshot: $out"
 }
 
+headless() {
+    print_header "Switch To Headless Gazebo"
+
+    require_container
+
+    print_info "Stopping Gazebo GUI client (gzclient)"
+    docker exec -i "$CONTAINER" bash -lc "pkill -x gzclient || true"
+
+    print_info "Process status after switch:"
+    docker exec -i "$CONTAINER" bash -lc 'echo "  gzserver: $(pgrep -x gzserver | wc -l)"; echo "  gzclient: $(pgrep -x gzclient | wc -l)"'
+
+    print_success "Headless mode enabled (simulation still running in gzserver)"
+}
+
+save_map() {
+    print_header "Save SLAM Map"
+
+    require_container
+
+    map_name="${1:-mitrack_map_$(date +%Y%m%d_%H%M%S)}"
+    
+    print_info "Saving map as: $map_name"
+    
+    docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+echo 'Calling /slam_toolbox/save_map service...'
+ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap '{name: {data: \"/sim_ws/src/my_robot/maps/$map_name\"}}'
+"
+
+    print_info "Map saved directly to my_robot/maps/"
+    sleep 1
+    
+    if ls ./my_robot/maps/${map_name}* 2>/dev/null | grep -q .; then
+        print_success "Map files created:"
+        ls -lh ./my_robot/maps/${map_name}* 2>/dev/null
+    else
+        print_info "Checking container for map files..."
+        docker exec -i "$CONTAINER" bash -lc "ls -lh /sim_ws/src/my_robot/maps/${map_name}* 2>/dev/null || echo 'Check SLAM logs if no files created'"
+    fi
+}
+
+waypoint_record() {
+    print_header "Record Waypoints From RViz"
+
+    require_container
+
+    csv_name="${1:-waypoints_$(date +%Y%m%d_%H%M%S).csv}"
+    if [[ "$csv_name" != *.csv ]]; then
+        csv_name="${csv_name}.csv"
+    fi
+    output_file="/sim_ws/src/my_robot/maps/${csv_name}"
+
+    print_info "Open RViz and click points using 'Publish Point' tool"
+    print_info "Press Ctrl+C in this terminal when done"
+    print_info "CSV output: $output_file"
+    echo ""
+
+    docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+source install/setup.bash
+ros2 run my_robot waypoint_recorder --ros-args -p output_file:='$output_file' -p frame_id:='map'
+"
+
+    print_success "Waypoint recording finished"
+}
+
+trajectory_build() {
+    print_header "Build Reference Trajectory"
+
+    require_container
+
+    waypoint_csv="$1"
+    trajectory_csv="$2"
+
+    if [ -z "$waypoint_csv" ]; then
+        waypoint_csv="$(ls -1t ./my_robot/maps/waypoints*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+
+    if [ -z "$waypoint_csv" ]; then
+        print_error "No waypoint CSV found in my_robot/maps"
+        print_info "Record waypoints first: ./dev.sh waypoint_record"
+        exit 1
+    fi
+
+    if [[ "$waypoint_csv" != *.csv ]]; then
+        waypoint_csv="${waypoint_csv}.csv"
+    fi
+
+    if [ -z "$trajectory_csv" ]; then
+        stem="${waypoint_csv%.csv}"
+        trajectory_csv="${stem}_trajectory.csv"
+    elif [[ "$trajectory_csv" != *.csv ]]; then
+        trajectory_csv="${trajectory_csv}.csv"
+    fi
+
+    waypoint_path="/sim_ws/src/my_robot/maps/${waypoint_csv}"
+    trajectory_path="/sim_ws/src/my_robot/maps/${trajectory_csv}"
+
+    print_info "Waypoint input:  ${waypoint_path}"
+    print_info "Trajectory out: ${trajectory_path}"
+    echo ""
+
+    docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+source install/setup.bash
+ros2 run my_robot trajectory_builder --input '$waypoint_path' --output '$trajectory_path' --spacing 0.10 --v-max 0.80 --a-lat-max 1.50 --a-long-max 1.00
+"
+
+    if ls ./my_robot/maps/${trajectory_csv} 1>/dev/null 2>&1; then
+        print_success "Trajectory CSV created: ./my_robot/maps/${trajectory_csv}"
+        print_info "Preview:"
+        head -n 8 ./my_robot/maps/${trajectory_csv}
+    else
+        print_error "Trajectory file not found on host path"
+        print_info "Check container path: ${trajectory_path}"
+        exit 1
+    fi
+}
+
+trajectory_follow_with_node() {
+    node_executable="$1"
+    controller_label="$2"
+    trajectory_csv="$3"
+
+    print_header "Follow Reference Trajectory (${controller_label})"
+
+    require_container
+
+    if [ -z "$trajectory_csv" ]; then
+        trajectory_csv="$(ls -1t ./my_robot/maps/*trajectory*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+
+    if [ -z "$trajectory_csv" ]; then
+        print_error "No trajectory CSV found in my_robot/maps"
+        print_info "Build one first: ./dev.sh trajectory_build"
+        exit 1
+    fi
+
+    if [[ "$trajectory_csv" != *.csv ]]; then
+        trajectory_csv="${trajectory_csv}.csv"
+    fi
+
+    trajectory_path="/sim_ws/src/my_robot/maps/${trajectory_csv}"
+
+    print_info "Trajectory input: ${trajectory_path}"
+    print_info "Controller: ${controller_label}"
+    print_info "Start this only when no Nav2 goal is active"
+    print_info "Press Ctrl+C to stop follower"
+    echo ""
+
+    docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+source install/setup.bash
+ros2 run my_robot ${node_executable} --ros-args -p trajectory_file:='$trajectory_path' -p global_frame:='map' -p robot_frame:='car_1_base_link' -p cmd_topic:='/car_1/cmd_vel'
+"
+
+    print_success "Trajectory follower stopped"
+}
+
+trajectory_follow() {
+    trajectory_follow_with_node "pid_trajectory_follower" "PID (default)" "$1"
+}
+
+trajectory_follow_pid() {
+    trajectory_follow_with_node "pid_trajectory_follower" "PID" "$1"
+}
+
+trajectory_follow_non_pid() {
+    trajectory_follow_with_node "trajectory_follower" "Non-PID (Pure Pursuit style)" "$1"
+}
+
+data_collect() {
+    print_header "Collect Navigation Dataset"
+
+    require_container
+
+    output_csv="$1"
+    trajectory_csv="$2"
+
+    if [ -z "$output_csv" ]; then
+        output_csv="nav_dataset_$(date +%Y%m%d_%H%M%S).csv"
+    fi
+    if [[ "$output_csv" != *.csv ]]; then
+        output_csv="${output_csv}.csv"
+    fi
+
+    if [ -z "$trajectory_csv" ]; then
+        trajectory_csv="$(ls -1t ./my_robot/maps/*trajectory*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+    if [[ -n "$trajectory_csv" && "$trajectory_csv" != *.csv ]]; then
+        trajectory_csv="${trajectory_csv}.csv"
+    fi
+
+    output_path="/sim_ws/src/my_robot/datasets/${output_csv}"
+
+    if [ -n "$trajectory_csv" ]; then
+        trajectory_path="/sim_ws/src/my_robot/maps/${trajectory_csv}"
+        print_info "Trajectory for error metrics: ${trajectory_path}"
+        traj_param="-p trajectory_file:='${trajectory_path}'"
+    else
+        print_info "No trajectory found; error metrics will be NaN"
+        traj_param=""
+    fi
+
+    print_info "Dataset output: ${output_path}"
+    print_info "Topics: /car_1/scan, /car_1/imu, /car_1/odom, /car_1/cmd_vel"
+    print_info "Press Ctrl+C to stop collection"
+    echo ""
+
+    docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+mkdir -p /sim_ws/src/my_robot/datasets
+source install/setup.bash
+ros2 run my_robot navigation_data_collector --ros-args -p output_file:='${output_path}' ${traj_param} -p global_frame:='map' -p robot_frame:='car_1_base_link' -p scan_topic:='/car_1/scan' -p imu_topic:='/car_1/imu' -p odom_topic:='/car_1/odom' -p cmd_topic:='/car_1/cmd_vel' -p log_rate:=20.0
+"
+
+    if ls ./my_robot/datasets/${output_csv} 1>/dev/null 2>&1; then
+        print_success "Dataset saved: ./my_robot/datasets/${output_csv}"
+        print_info "Preview:"
+        head -n 5 ./my_robot/datasets/${output_csv}
+    else
+        print_info "Dataset should be at: ${output_path}"
+    fi
+}
+
+bc_train() {
+    print_header "Train Behavioral Cloning Model"
+
+    require_container
+
+    dataset_csv="$1"
+    model_json="$2"
+
+    if [ -z "$dataset_csv" ]; then
+        dataset_csv="$(ls -1t ./my_robot/datasets/nav_dataset*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+
+    if [ -z "$dataset_csv" ]; then
+        print_error "No dataset CSV found in my_robot/datasets"
+        print_info "Collect one first: ./dev.sh data_collect"
+        exit 1
+    fi
+
+    if [[ "$dataset_csv" != *.csv ]]; then
+        dataset_csv="${dataset_csv}.csv"
+    fi
+
+    if [ -z "$model_json" ]; then
+        model_json="bc_model_$(date +%Y%m%d_%H%M%S).json"
+    fi
+    if [[ "$model_json" != *.json ]]; then
+        model_json="${model_json}.json"
+    fi
+
+    dataset_path="/sim_ws/src/my_robot/datasets/${dataset_csv}"
+    model_path="/sim_ws/src/my_robot/models/${model_json}"
+
+    print_info "Dataset input: ${dataset_path}"
+    print_info "Model output: ${model_path}"
+    echo ""
+
+    docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+mkdir -p /sim_ws/src/my_robot/models
+source install/setup.bash
+ros2 run my_robot train_behavioral_cloning --input '${dataset_path}' --output '${model_path}'
+"
+
+    if ls ./my_robot/models/${model_json} 1>/dev/null 2>&1; then
+        print_success "BC model saved: ./my_robot/models/${model_json}"
+    else
+        print_error "Model file not found on host path"
+        print_info "Check container path: ${model_path}"
+        exit 1
+    fi
+}
+
+bc_train_host() {
+    print_header "Train Behavioral Cloning Model (Host / No ROS)"
+
+    dataset_csv="$1"
+    model_json="$2"
+
+    if [ -z "$dataset_csv" ]; then
+        dataset_csv="$(ls -1t ./my_robot/datasets/nav_dataset*.csv 2>/dev/null | head -n 1 || true)"
+    fi
+
+    if [ -z "$dataset_csv" ]; then
+        print_error "No dataset CSV found in my_robot/datasets"
+        print_info "Collect one first: ./dev.sh data_collect"
+        exit 1
+    fi
+
+    if [[ "$dataset_csv" != *.csv ]]; then
+        dataset_csv="${dataset_csv}.csv"
+    fi
+    # Resolve to host path if only a basename was given
+    if [[ "$dataset_csv" != */* ]]; then
+        dataset_csv="./my_robot/datasets/${dataset_csv}"
+    fi
+
+    if [ -z "$model_json" ]; then
+        model_json="bc_model_$(date +%Y%m%d_%H%M%S).json"
+    fi
+    if [[ "$model_json" != *.json ]]; then
+        model_json="${model_json}.json"
+    fi
+    if [[ "$model_json" != */* ]]; then
+        mkdir -p ./my_robot/models
+        model_json="./my_robot/models/${model_json}"
+    fi
+
+    print_info "Dataset input: ${dataset_csv}"
+    print_info "Model output:  ${model_json}"
+    echo ""
+
+    python3 ./my_robot/my_robot/train_behavioral_cloning.py \
+        --input "${dataset_csv}" \
+        --output "${model_json}"
+
+    if [ -f "$model_json" ]; then
+        print_success "BC model saved: ${model_json}"
+    else
+        print_error "Model file not created: ${model_json}"
+        exit 1
+    fi
+}
+
+trajectory_follow_bc() {
+    print_header "Follow Reference Trajectory (Behavioral Cloning)"
+
+    require_container
+
+    model_json="$1"
+    trajectory_csv="$2"
+
+    if [ -z "$model_json" ]; then
+        model_json="$(ls -1t ./my_robot/models/bc_model*.json 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+    if [ -z "$model_json" ]; then
+        print_error "No BC model found in my_robot/models"
+        print_info "Train one first: ./dev.sh bc_train"
+        exit 1
+    fi
+    if [[ "$model_json" != *.json ]]; then
+        model_json="${model_json}.json"
+    fi
+
+    if [ -z "$trajectory_csv" ]; then
+        trajectory_csv="$(ls -1t ./my_robot/maps/*trajectory*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+    if [ -z "$trajectory_csv" ]; then
+        print_error "No trajectory CSV found in my_robot/maps"
+        print_info "Build one first: ./dev.sh trajectory_build"
+        exit 1
+    fi
+    if [[ "$trajectory_csv" != *.csv ]]; then
+        trajectory_csv="${trajectory_csv}.csv"
+    fi
+
+    model_path="/sim_ws/src/my_robot/models/${model_json}"
+    trajectory_path="/sim_ws/src/my_robot/maps/${trajectory_csv}"
+
+    print_info "BC model: ${model_path}"
+    print_info "Trajectory: ${trajectory_path}"
+    print_info "Start this only when no Nav2 goal is active"
+    print_info "Press Ctrl+C to stop follower"
+    echo ""
+
+    docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+source install/setup.bash
+ros2 run my_robot bc_trajectory_follower --ros-args -p model_file:='${model_path}' -p trajectory_file:='${trajectory_path}' -p global_frame:='map' -p robot_frame:='car_1_base_link' -p scan_topic:='/car_1/scan' -p odom_topic:='/car_1/odom' -p cmd_topic:='/car_1/cmd_vel' -p control_rate:=20.0
+"
+
+    print_success "BC trajectory follower stopped"
+}
+
+maps() {
+    print_header "Available Map Files"
+    
+    maps_dir="./my_robot/maps"
+    
+    if [ ! -d "$maps_dir" ]; then
+        print_error "Maps directory not found: $maps_dir"
+        exit 1
+    fi
+    
+    print_info "Map files (.yaml):"
+    echo ""
+    ls -lhS "$maps_dir"/*.yaml 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}' || {
+        print_error "No map files found"
+    }
+    
+    echo ""
+    print_info "Recommended tracks:"
+    echo "  • moretrack.yaml     - Larger track (recommended for trajectory tracking)"
+    echo "  • trackhalf.yaml     - Half track variant"
+    echo "  • mitrack_map_*.yaml - Saved mitrack maps from previous sessions"
+    echo ""
+    print_info "Quick start with better track:"
+    echo "  ./dev.sh waypoint_record moretrack_waypoints.csv"
+    echo "  ./dev.sh trajectory_build moretrack_waypoints.csv moretrack_trajectory.csv"
+    echo "  ./dev.sh trajectory_follow moretrack_trajectory.csv"
+}
+
+compare_controllers() {
+    print_header "Compare PID vs BC Controller Performance"
+
+    pid_glob="${1:-pid_*.csv}"
+    bc_glob="${2:-bc_*.csv}"
+    out_dir="${3:-./my_robot/results/controller_compare_$(date +%Y%m%d_%H%M%S)}"
+
+    print_info "Datasets dir: ./my_robot/datasets"
+    print_info "PID glob: ${pid_glob}"
+    print_info "BC glob:  ${bc_glob}"
+    print_info "Output dir: ${out_dir}"
+    echo ""
+
+    mkdir -p "$out_dir"
+
+    python3 ./my_robot/my_robot/compare_controllers.py \
+        --datasets-dir ./my_robot/datasets \
+        --pid-glob "$pid_glob" \
+        --bc-glob "$bc_glob" \
+        --out-dir "$out_dir"
+
+    print_success "Comparison complete"
+    print_info "Report: ${out_dir}/controller_comparison_report.md"
+    print_info "Metrics CSV: ${out_dir}/controller_run_metrics.csv"
+    print_info "Graphs:"
+    print_info "  - ${out_dir}/summary_metrics_bar.png"
+    print_info "  - ${out_dir}/robustness_boxplots.png"
+    print_info "  - ${out_dir}/cte_progress_profile.png"
+    print_info "  - ${out_dir}/efficiency_scatter.png"
+}
+
 # ════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════
+
+activate_host_ros2_env
 
 case "${1:-help}" in
     compose)
@@ -581,6 +1217,45 @@ case "${1:-help}" in
         ;;
     capture)
         capture
+        ;;
+    headless)
+        headless
+        ;;
+    save_map)
+        save_map "$2"
+        ;;
+    waypoint_record)
+        waypoint_record "$2"
+        ;;
+    trajectory_build)
+        trajectory_build "$2" "$3"
+        ;;
+    trajectory_follow)
+        trajectory_follow "$2"
+        ;;
+    trajectory_follow_pid)
+        trajectory_follow_pid "$2"
+        ;;
+    trajectory_follow_non_pid)
+        trajectory_follow_non_pid "$2"
+        ;;
+    data_collect)
+        data_collect "$2" "$3"
+        ;;
+    bc_train)
+        bc_train "$2" "$3"
+        ;;
+    bc_train_host)
+        bc_train_host "$2" "$3"
+        ;;
+    trajectory_follow_bc)
+        trajectory_follow_bc "$2" "$3"
+        ;;
+    maps)
+        maps
+        ;;
+    compare_controllers)
+        compare_controllers "$2" "$3" "$4"
         ;;
     help|--help|-h|"")
         usage

@@ -40,6 +40,14 @@ setup(
     license='Apache License 2.0',
     tests_require=['pytest'],
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            'waypoint_recorder = my_robot.waypoint_recorder:main',
+            'trajectory_builder = my_robot.trajectory_builder:main',
+            'trajectory_follower = my_robot.trajectory_follower:main',
+            'pid_trajectory_follower = my_robot.pid_trajectory_follower:main',
+            'navigation_data_collector = my_robot.navigation_data_collector:main',
+            'train_behavioral_cloning = my_robot.train_behavioral_cloning:main',
+            'bc_trajectory_follower = my_robot.bc_trajectory_follower:main',
+        ],
     },
 )
