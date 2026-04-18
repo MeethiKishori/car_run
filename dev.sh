@@ -172,7 +172,39 @@ COMMANDS:
 
 ───────────────────────────────────────────────────────────────────────────
 
-20. maps
+20. bc_train
+    Train behavioral-cloning model from dataset CSV
+    Usage: ./dev.sh bc_train [dataset_csv] [model_json]
+
+    Examples:
+    ./dev.sh bc_train
+    ./dev.sh bc_train nav_dataset_20260417_020049.csv
+    ./dev.sh bc_train run1.csv bc_model_run1.json
+
+───────────────────────────────────────────────────────────────────────────
+
+21. bc_train_host
+    Train behavioral-cloning model on HOST (no Docker/ROS needed)
+    Usage: ./dev.sh bc_train_host [dataset_csv] [model_json]
+
+    Examples:
+    ./dev.sh bc_train_host
+    ./dev.sh bc_train_host nav_dataset_20260417_020049.csv
+    ./dev.sh bc_train_host run1.csv bc_model_run1.json
+
+───────────────────────────────────────────────────────────────────────────
+
+22. trajectory_follow_bc
+    Follow trajectory using trained behavioral-cloning model
+    Usage: ./dev.sh trajectory_follow_bc [model_json] [trajectory_csv]
+
+    Examples:
+    ./dev.sh trajectory_follow_bc
+    ./dev.sh trajectory_follow_bc bc_model_run1.json moretrack_trajectory.csv
+
+───────────────────────────────────────────────────────────────────────────
+
+23. maps
     List all available map files in my_robot/maps/
     Usage: ./dev.sh maps
 
@@ -208,6 +240,42 @@ print_info() {
 
 CONTAINER="f1tenth_gym_ros-sim-1"
 LAUNCH_LOG="/tmp/diag_launch.log"
+ROS2_CONDA_ENV="${ROS2_CONDA_ENV:-ROS2}"
+
+activate_host_ros2_env() {
+    # Best effort: keep docker-only commands working even if conda is unavailable.
+    if [ "${DEV_SH_SKIP_ROS2_ENV:-0}" = "1" ]; then
+        return 0
+    fi
+
+    if [ "${CONDA_DEFAULT_ENV:-}" = "$ROS2_CONDA_ENV" ]; then
+        return 0
+    fi
+
+    if command -v conda >/dev/null 2>&1; then
+        conda_base="$(conda info --base 2>/dev/null || true)"
+        if [ -n "$conda_base" ] && [ -f "$conda_base/etc/profile.d/conda.sh" ]; then
+            # shellcheck source=/dev/null
+            source "$conda_base/etc/profile.d/conda.sh"
+        fi
+    else
+        for conda_sh in \
+            "$HOME/miniconda3/etc/profile.d/conda.sh" \
+            "$HOME/anaconda3/etc/profile.d/conda.sh" \
+            "$HOME/mambaforge/etc/profile.d/conda.sh" \
+            "$HOME/miniforge3/etc/profile.d/conda.sh"; do
+            if [ -f "$conda_sh" ]; then
+                # shellcheck source=/dev/null
+                source "$conda_sh"
+                break
+            fi
+        done
+    fi
+
+    if command -v conda >/dev/null 2>&1; then
+        conda activate "$ROS2_CONDA_ENV" >/dev/null 2>&1 || true
+    fi
+}
 
 latest_ros_log_dir_in_container() {
     docker exec -i "$CONTAINER" bash -lc 'ls -1dt /root/.ros/log/*/ 2>/dev/null | head -n 1 | sed "s:/$::"'
@@ -255,6 +323,9 @@ pkill -f "/sim_ws/install/my_robot/lib/my_robot/pid_trajectory_follower" || true
 pkill -f "navigation_data_collector" || true
 pkill -f "ros2 run my_robot navigation_data_collector" || true
 pkill -f "/sim_ws/install/my_robot/lib/my_robot/navigation_data_collector" || true
+pkill -f "bc_trajectory_follower" || true
+pkill -f "ros2 run my_robot bc_trajectory_follower" || true
+pkill -f "/sim_ws/install/my_robot/lib/my_robot/bc_trajectory_follower" || true
 pkill -f "waypoint_recorder" || true
 pkill -f "ros2 run my_robot waypoint_recorder" || true
 pkill -f "trajectory_builder" || true
@@ -881,6 +952,159 @@ ros2 run my_robot navigation_data_collector --ros-args -p output_file:='${output
     fi
 }
 
+bc_train() {
+    print_header "Train Behavioral Cloning Model"
+
+    require_container
+
+    dataset_csv="$1"
+    model_json="$2"
+
+    if [ -z "$dataset_csv" ]; then
+        dataset_csv="$(ls -1t ./my_robot/datasets/nav_dataset*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+
+    if [ -z "$dataset_csv" ]; then
+        print_error "No dataset CSV found in my_robot/datasets"
+        print_info "Collect one first: ./dev.sh data_collect"
+        exit 1
+    fi
+
+    if [[ "$dataset_csv" != *.csv ]]; then
+        dataset_csv="${dataset_csv}.csv"
+    fi
+
+    if [ -z "$model_json" ]; then
+        model_json="bc_model_$(date +%Y%m%d_%H%M%S).json"
+    fi
+    if [[ "$model_json" != *.json ]]; then
+        model_json="${model_json}.json"
+    fi
+
+    dataset_path="/sim_ws/src/my_robot/datasets/${dataset_csv}"
+    model_path="/sim_ws/src/my_robot/models/${model_json}"
+
+    print_info "Dataset input: ${dataset_path}"
+    print_info "Model output: ${model_path}"
+    echo ""
+
+    docker exec -i "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+mkdir -p /sim_ws/src/my_robot/models
+source install/setup.bash
+ros2 run my_robot train_behavioral_cloning --input '${dataset_path}' --output '${model_path}'
+"
+
+    if ls ./my_robot/models/${model_json} 1>/dev/null 2>&1; then
+        print_success "BC model saved: ./my_robot/models/${model_json}"
+    else
+        print_error "Model file not found on host path"
+        print_info "Check container path: ${model_path}"
+        exit 1
+    fi
+}
+
+bc_train_host() {
+    print_header "Train Behavioral Cloning Model (Host / No ROS)"
+
+    dataset_csv="$1"
+    model_json="$2"
+
+    if [ -z "$dataset_csv" ]; then
+        dataset_csv="$(ls -1t ./my_robot/datasets/nav_dataset*.csv 2>/dev/null | head -n 1 || true)"
+    fi
+
+    if [ -z "$dataset_csv" ]; then
+        print_error "No dataset CSV found in my_robot/datasets"
+        print_info "Collect one first: ./dev.sh data_collect"
+        exit 1
+    fi
+
+    if [[ "$dataset_csv" != *.csv ]]; then
+        dataset_csv="${dataset_csv}.csv"
+    fi
+    # Resolve to host path if only a basename was given
+    if [[ "$dataset_csv" != */* ]]; then
+        dataset_csv="./my_robot/datasets/${dataset_csv}"
+    fi
+
+    if [ -z "$model_json" ]; then
+        model_json="bc_model_$(date +%Y%m%d_%H%M%S).json"
+    fi
+    if [[ "$model_json" != *.json ]]; then
+        model_json="${model_json}.json"
+    fi
+    if [[ "$model_json" != */* ]]; then
+        mkdir -p ./my_robot/models
+        model_json="./my_robot/models/${model_json}"
+    fi
+
+    print_info "Dataset input: ${dataset_csv}"
+    print_info "Model output:  ${model_json}"
+    echo ""
+
+    python3 ./my_robot/my_robot/train_behavioral_cloning.py \
+        --input "${dataset_csv}" \
+        --output "${model_json}"
+
+    if [ -f "$model_json" ]; then
+        print_success "BC model saved: ${model_json}"
+    else
+        print_error "Model file not created: ${model_json}"
+        exit 1
+    fi
+}
+
+trajectory_follow_bc() {
+    print_header "Follow Reference Trajectory (Behavioral Cloning)"
+
+    require_container
+
+    model_json="$1"
+    trajectory_csv="$2"
+
+    if [ -z "$model_json" ]; then
+        model_json="$(ls -1t ./my_robot/models/bc_model*.json 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+    if [ -z "$model_json" ]; then
+        print_error "No BC model found in my_robot/models"
+        print_info "Train one first: ./dev.sh bc_train"
+        exit 1
+    fi
+    if [[ "$model_json" != *.json ]]; then
+        model_json="${model_json}.json"
+    fi
+
+    if [ -z "$trajectory_csv" ]; then
+        trajectory_csv="$(ls -1t ./my_robot/maps/*trajectory*.csv 2>/dev/null | head -n 1 | xargs -n1 basename 2>/dev/null || true)"
+    fi
+    if [ -z "$trajectory_csv" ]; then
+        print_error "No trajectory CSV found in my_robot/maps"
+        print_info "Build one first: ./dev.sh trajectory_build"
+        exit 1
+    fi
+    if [[ "$trajectory_csv" != *.csv ]]; then
+        trajectory_csv="${trajectory_csv}.csv"
+    fi
+
+    model_path="/sim_ws/src/my_robot/models/${model_json}"
+    trajectory_path="/sim_ws/src/my_robot/maps/${trajectory_csv}"
+
+    print_info "BC model: ${model_path}"
+    print_info "Trajectory: ${trajectory_path}"
+    print_info "Start this only when no Nav2 goal is active"
+    print_info "Press Ctrl+C to stop follower"
+    echo ""
+
+    docker exec -it "$CONTAINER" bash -lc "$(container_shell_prelude)
+
+source install/setup.bash
+ros2 run my_robot  ory_follower --ros-args -p model_file:='${model_path}' -p trajectory_file:='${trajectory_path}' -p global_frame:='map' -p robot_frame:='car_1_base_link' -p scan_topic:='/car_1/scan' -p odom_topic:='/car_1/odom' -p cmd_topic:='/car_1/cmd_vel' -p control_rate:=20.0
+"
+
+    print_success "BC trajectory follower stopped"
+}
+
 maps() {
     print_header "Available Map Files"
     
@@ -912,6 +1136,8 @@ maps() {
 # ════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════
+
+activate_host_ros2_env
 
 case "${1:-help}" in
     compose)
@@ -970,6 +1196,15 @@ case "${1:-help}" in
         ;;
     data_collect)
         data_collect "$2" "$3"
+        ;;
+    bc_train)
+        bc_train "$2" "$3"
+        ;;
+    bc_train_host)
+        bc_train_host "$2" "$3"
+        ;;
+    trajectory_follow_bc)
+        trajectory_follow_bc "$2" "$3"
         ;;
     maps)
         maps

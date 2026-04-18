@@ -218,6 +218,12 @@ Why:
    - spawn_entity
    - RViz/Gazebo processes
 3. Cleaned `f1tenth_gym_ros/Dockerfile` by removing redundant package installs and simplifying layers.
+
+### Translation Support Update (2026-04-17)
+
+1. Added full English reference translation at `Personalfragebogen_English_Translation.md` for the LfF personnel questionnaire.
+2. Generated a PDF version from that translation at `Personalfragebogen_English_Translation.pdf` using local CUPS conversion.
+3. Purpose: improve readability for non-German users while keeping the original German form as the official submission document.
 4. Kept launch handling simple so the user can directly watch sourcing, build output, and live ROS launch logs.
 5. Hardened `cleanup_runtime()` in `dev.sh` to always return success so non-critical cleanup exit codes do not abort launch under `set -e`.
 6. Added `|| true` to the cleanup `docker exec` command so `set -e` cannot terminate launch on cleanup return codes.
@@ -252,6 +258,25 @@ Why:
 3. Reduces manual steps and lowers chance of environment drift.
 4. Preserves direct visibility into the launch process, which is more useful for debugging runtime failures.
 5. Prevents early script exit right after "Cleaning stale ROS/Gazebo processes".
+
+### 13. Host ROS2 environment auto-activation in dev.sh
+
+What changed:
+
+1. Added automatic host-side conda environment activation for all `./dev.sh` commands.
+2. Default environment name is `ROS2` and can be overridden with `ROS2_CONDA_ENV`.
+3. Added opt-out support via `DEV_SH_SKIP_ROS2_ENV=1`.
+
+How:
+
+1. Added `activate_host_ros2_env()` in `dev.sh`.
+2. The function tries to source conda initialization from detected conda install paths when needed.
+3. Called `activate_host_ros2_env` before the command dispatch `case` block so every command gets the same host environment setup.
+
+Why:
+
+1. User was repeatedly running `conda activate ROS2` manually before using `./dev.sh` commands.
+2. Centralizing host environment activation reduces setup friction and avoids per-terminal drift.
 6. Makes cleanup step robust even when process-kill commands return non-zero exit statuses.
 7. Reduces CPU pressure and frame-timing jitter, which helps prevent control loop deadline misses and intermittent action aborts.
 8. Clarifies restart policy: restart is not required every run; use restart only if duplicate critical nodes survive cleanup.
@@ -1221,3 +1246,131 @@ Never compare `tf.header.stamp` to `rclpy.Clock().now()` in a simulation — the
    - `./dev.sh build`
 2. Re-run collector:
    - `./dev.sh data_collect`
+
+---
+
+## Latest Update (2026-04-17, Stage 7 Data-Driven Controller - Behavioral Cloning)
+
+### Objective
+
+1. Use collected dataset to build a data-driven controller.
+2. Implement a straightforward behavioral cloning (BC) approach.
+3. Make training and runtime usage accessible through `dev.sh`.
+
+### Implementation summary
+
+1. Added BC training script:
+   - `my_robot/my_robot/train_behavioral_cloning.py`
+2. Added BC runtime controller node:
+   - `my_robot/my_robot/bc_trajectory_follower.py`
+3. Registered new entry points in `my_robot/setup.py`:
+   - `train_behavioral_cloning`
+   - `bc_trajectory_follower`
+4. Added `python3-numpy` dependency in `my_robot/package.xml`.
+5. Added new `dev.sh` commands:
+   - `./dev.sh bc_train [dataset_csv] [model_json]`
+   - `./dev.sh trajectory_follow_bc [model_json] [trajectory_csv]`
+
+### BC model design
+
+1. Model type:
+   - Multi-output ridge regression (behavioral cloning baseline)
+2. Input features:
+   - `odom_linear_x`, `odom_angular_z`
+   - `scan_min`, `scan_mean`, `scan_std`
+   - `scan_front_min`, `scan_left_min`, `scan_right_min`
+   - `traj_cross_track_error`, `traj_heading_error`, `traj_goal_distance`
+3. Output targets:
+   - `cmd_linear_x`, `cmd_angular_z`
+4. Data preprocessing:
+   - Drop rows with NaN/Inf in required features/targets
+   - Standardize inputs and outputs
+5. Training/validation:
+   - Random split with validation metrics (MAE, RMSE, R2)
+6. Saved artifact:
+   - JSON model in `my_robot/models/` (weights, bias, normalization stats, metrics)
+
+### Runtime BC controller behavior
+
+1. Subscribes to:
+   - `/car_1/scan`
+   - `/car_1/odom`
+2. Uses TF pose (`map -> car_1_base_link`) + trajectory file to compute trajectory error features.
+3. Builds feature vector in same order as trained model.
+4. Predicts `cmd_vel` from trained BC model and publishes to `/car_1/cmd_vel`.
+5. Clips outputs to safety limits (`max_linear_speed`, `max_angular_speed`).
+
+### New command workflow
+
+1. Collect data:
+   - `./dev.sh data_collect run1.csv moretrack_trajectory.csv`
+2. Train BC model:
+   - `./dev.sh bc_train run1.csv bc_model_run1.json`
+3. Run BC follower:
+   - `./dev.sh trajectory_follow_bc bc_model_run1.json moretrack_trajectory.csv`
+
+### Validation
+
+1. `python3 -m py_compile my_robot/my_robot/train_behavioral_cloning.py my_robot/my_robot/bc_trajectory_follower.py` -> OK
+2. `bash -n dev.sh` -> OK
+3. `./dev.sh --help` shows `bc_train` and `trajectory_follow_bc`.
+
+### Training run result (first run)
+
+1. Dataset: `my_robot/datasets/nav_dataset_20260417_020049.csv`
+2. Valid rows: 1190 (802 rows dropped due to NaN/Inf)
+3. Train R²: linear=0.911, angular=0.954
+4. Val R²: linear=0.802, angular=0.957
+5. Model saved: `my_robot/models/bc_model_20260417_020049.json`
+
+### Runtime status
+
+1. `bc_trajectory_follower` node starts correctly and loads model.
+2. Blocked by missing `map` TF frame when SLAM/launch stack is not running.
+3. Requires `./dev.sh launch` before `./dev.sh trajectory_follow_bc`.
+
+---
+
+## Latest Update (2026-04-17, Host-Side BC Training)
+
+### Operator question
+
+1. Can training be done outside Docker, without launching ROS?
+
+### Answer
+
+Yes. `train_behavioral_cloning.py` is pure Python (numpy only, no ROS imports).
+Training only reads a CSV and writes a JSON — no ROS runtime needed.
+
+### Change applied
+
+1. Added new `dev.sh` command: `bc_train_host`
+   - Runs `python3 ./my_robot/my_robot/train_behavioral_cloning.py` directly on the host.
+   - No container, no ROS sourcing required.
+   - Auto-resolves dataset from `my_robot/datasets/` and writes model to `my_robot/models/`.
+2. Updated usage/help text (renumbered commands accordingly).
+
+### New command
+
+```bash
+./dev.sh bc_train_host
+# or explicitly:
+./dev.sh bc_train_host nav_dataset_20260417_020049.csv bc_model_run1.json
+```
+
+### Requirement
+
+1. `numpy` available in active Python environment (e.g. `conda activate ROS2`).
+2. No Docker, no ROS, no container running.
+
+### When to use which
+
+| Command | Needs Docker | Needs ROS | Use case |
+|---|---|---|---|
+| `./dev.sh bc_train` | Yes | Yes (ros2 run) | Training inside container via ROS entrypoint |
+| `./dev.sh bc_train_host` | No | No | Training on host from existing CSV |
+
+### Validation
+
+1. `bash -n dev.sh` -> OK
+2. `./dev.sh --help` shows `bc_train_host`.

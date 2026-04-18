@@ -8,6 +8,7 @@
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
+  <depend>python3-numpy</depend>
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>
   <depend>nav_msgs</depend>
