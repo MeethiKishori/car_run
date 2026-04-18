@@ -136,7 +136,7 @@ COMMANDS:
 
     Examples:
       ./dev.sh trajectory_follow
-      ./dev.sh trajectory_follow waypoints_20260416_232730_trajectory.csv
+    ./dev.sh trajectory_follow saturday_ref_traj.csv
 
 ───────────────────────────────────────────────────────────────────────────
 
@@ -167,8 +167,8 @@ COMMANDS:
 
     Examples:
     ./dev.sh data_collect
-    ./dev.sh data_collect run1.csv
-    ./dev.sh data_collect run1.csv moretrack_trajectory.csv
+    ./dev.sh data_collect pid_sat_run1.csv saturday_ref_traj.csv
+    ./dev.sh data_collect bc_sat_run1.csv saturday_ref_traj.csv
 
 ───────────────────────────────────────────────────────────────────────────
 
@@ -178,8 +178,8 @@ COMMANDS:
 
     Examples:
     ./dev.sh bc_train
-    ./dev.sh bc_train nav_dataset_20260417_020049.csv
-    ./dev.sh bc_train run1.csv bc_model_run1.json
+    ./dev.sh bc_train saturday_data_collect.csv saturday.json
+    ./dev.sh bc_train bc_sat_run1.csv bc_sat_model1.json
 
 ───────────────────────────────────────────────────────────────────────────
 
@@ -200,7 +200,8 @@ COMMANDS:
 
     Examples:
     ./dev.sh trajectory_follow_bc
-    ./dev.sh trajectory_follow_bc bc_model_run1.json moretrack_trajectory.csv
+    ./dev.sh trajectory_follow_bc saturday.json saturday_ref_traj.csv
+    ./dev.sh trajectory_follow_bc bc_sat_model1.json saturday_ref_traj.csv
 
 ───────────────────────────────────────────────────────────────────────────
 
@@ -217,8 +218,9 @@ COMMANDS:
 
     Examples:
     ./dev.sh compare_controllers
+    ./dev.sh compare_controllers 'pid_sat_run1.csv' 'bc_sat_run1.csv'
     ./dev.sh compare_controllers 'pid_sat_run*.csv' 'bc_sat_run*.csv'
-    ./dev.sh compare_controllers 'pid_*.csv' 'bc_*.csv' ./my_robot/results/sat_compare
+    ./dev.sh compare_controllers 'pid_sat_run*.csv' 'bc_sat_run*.csv' ./my_robot/results/sat_compare
 
 ═════════════════════════════════════════════════════════════════════════════
 EOF

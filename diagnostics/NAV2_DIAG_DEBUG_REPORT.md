@@ -380,6 +380,23 @@ Why:
 
 1. User requested Stage-8 style automated comparison between basic (PID) and data-driven (BC) controllers.
 2. Needed repeatable, dataset-driven reporting with both numeric and visual outputs.
+
+### 19. Updated dev.sh help with concrete PID/BC example names
+
+What changed:
+
+1. Refreshed `dev.sh` usage examples to use real run/model names from current workflow.
+2. Added explicit examples for:
+   - `trajectory_follow saturday_ref_traj.csv`
+   - `data_collect pid_sat_run1.csv saturday_ref_traj.csv`
+   - `data_collect bc_sat_run1.csv saturday_ref_traj.csv`
+   - `bc_train saturday_data_collect.csv saturday.json`
+   - `trajectory_follow_bc saturday.json saturday_ref_traj.csv`
+   - `compare_controllers` using `pid_sat_run*.csv` and `bc_sat_run*.csv`
+
+Why:
+
+1. User asked for realistic copy-paste examples aligned with current Saturday PID vs BC evaluation flow.
 6. Makes cleanup step robust even when process-kill commands return non-zero exit statuses.
 7. Reduces CPU pressure and frame-timing jitter, which helps prevent control loop deadline misses and intermittent action aborts.
 8. Clarifies restart policy: restart is not required every run; use restart only if duplicate critical nodes survive cleanup.
