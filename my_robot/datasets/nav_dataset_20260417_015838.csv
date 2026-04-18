@@ -1,1 +1,0 @@
-timestamp_sec,odom_linear_x,odom_angular_z,cmd_linear_x,cmd_angular_z,scan_min,scan_mean,scan_std,scan_front_min,scan_left_min,scan_right_min,traj_cross_track_error,traj_heading_error,traj_goal_distance

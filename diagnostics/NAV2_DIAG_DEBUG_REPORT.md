@@ -351,6 +351,35 @@ Why:
 
 1. User run showed `No executable found` when calling `./dev.sh trajectory_follow_bc ...`.
 2. Root cause was a typo (`ory_follower`) in the command string.
+
+### 18. Added automatic PID vs BC comparison (metrics + graphs)
+
+What changed:
+
+1. Added new command `./dev.sh compare_controllers [pid_glob] [bc_glob] [output_dir]`.
+2. Added script `my_robot/my_robot/compare_controllers.py`.
+3. The workflow now auto-generates:
+   - per-run metrics CSV
+   - markdown comparison report
+   - graph set (accuracy/robustness/efficiency views)
+
+How:
+
+1. `compare_controllers.py` reads PID and BC dataset CSV groups from `my_robot/datasets/` by glob pattern.
+2. Computes per-run and grouped metrics for:
+   - Accuracy (`rmse_cte`, `rmse_heading`, `final_goal_distance`, etc.)
+   - Robustness (`p95_abs_cte`, `max_abs_cte`, high-error ratio, success rate)
+   - Efficiency (run duration, sample-rate proxy, command effort)
+3. Generates graphs:
+   - `summary_metrics_bar.png`
+   - `robustness_boxplots.png`
+   - `cte_progress_profile.png`
+   - `efficiency_scatter.png`
+
+Why:
+
+1. User requested Stage-8 style automated comparison between basic (PID) and data-driven (BC) controllers.
+2. Needed repeatable, dataset-driven reporting with both numeric and visual outputs.
 6. Makes cleanup step robust even when process-kill commands return non-zero exit statuses.
 7. Reduces CPU pressure and frame-timing jitter, which helps prevent control loop deadline misses and intermittent action aborts.
 8. Clarifies restart policy: restart is not required every run; use restart only if duplicate critical nodes survive cleanup.

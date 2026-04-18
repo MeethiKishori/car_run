@@ -208,6 +208,18 @@ COMMANDS:
     List all available map files in my_robot/maps/
     Usage: ./dev.sh maps
 
+───────────────────────────────────────────────────────────────────────────
+
+24. compare_controllers
+    Compare PID vs BC controller datasets (accuracy, robustness, efficiency)
+    and generate graphs + markdown report
+    Usage: ./dev.sh compare_controllers [pid_glob] [bc_glob] [output_dir]
+
+    Examples:
+    ./dev.sh compare_controllers
+    ./dev.sh compare_controllers 'pid_sat_run*.csv' 'bc_sat_run*.csv'
+    ./dev.sh compare_controllers 'pid_*.csv' 'bc_*.csv' ./my_robot/results/sat_compare
+
 ═════════════════════════════════════════════════════════════════════════════
 EOF
     exit 0
@@ -1133,6 +1145,37 @@ maps() {
     echo "  ./dev.sh trajectory_follow moretrack_trajectory.csv"
 }
 
+compare_controllers() {
+    print_header "Compare PID vs BC Controller Performance"
+
+    pid_glob="${1:-pid_*.csv}"
+    bc_glob="${2:-bc_*.csv}"
+    out_dir="${3:-./my_robot/results/controller_compare_$(date +%Y%m%d_%H%M%S)}"
+
+    print_info "Datasets dir: ./my_robot/datasets"
+    print_info "PID glob: ${pid_glob}"
+    print_info "BC glob:  ${bc_glob}"
+    print_info "Output dir: ${out_dir}"
+    echo ""
+
+    mkdir -p "$out_dir"
+
+    python3 ./my_robot/my_robot/compare_controllers.py \
+        --datasets-dir ./my_robot/datasets \
+        --pid-glob "$pid_glob" \
+        --bc-glob "$bc_glob" \
+        --out-dir "$out_dir"
+
+    print_success "Comparison complete"
+    print_info "Report: ${out_dir}/controller_comparison_report.md"
+    print_info "Metrics CSV: ${out_dir}/controller_run_metrics.csv"
+    print_info "Graphs:"
+    print_info "  - ${out_dir}/summary_metrics_bar.png"
+    print_info "  - ${out_dir}/robustness_boxplots.png"
+    print_info "  - ${out_dir}/cte_progress_profile.png"
+    print_info "  - ${out_dir}/efficiency_scatter.png"
+}
+
 # ════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════
@@ -1208,6 +1251,9 @@ case "${1:-help}" in
         ;;
     maps)
         maps
+        ;;
+    compare_controllers)
+        compare_controllers "$2" "$3" "$4"
         ;;
     help|--help|-h|"")
         usage
